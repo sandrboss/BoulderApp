@@ -1,26 +1,72 @@
 @import "tailwindcss";
 
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Base colors */
+  --background: #F1F0EE; /* slate-50 */
+  --foreground: #F1F0EE;    /* slate-900 */
+  --muted: #a9a9a9;      /* slate-500 */
+  --border: #dbdbdb;     /* slate-200 */
+
+  /* Surfaces */
+  --card: #F1F0EE;       /* white */
+  --card-muted: #dfdfde; /* subtle alt */
+  --shadow: 0 1px 2px rgba(150, 150, 150, 0.271);
+
+  /* Brand */
+  --primary: 16 185 129;     /* emerald-500 */
+  --primary-soft: 209 250 229; /* emerald-100 */
+
+  /* Radius */
+  --r-lg: 32px;
+  --r-md: 24px;
+  --r-sm: 8px;
+
+  /* Interaction */
+  --tap: 44px;
 }
+
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Colors */
+  --color-bg: hex(var(--background));
+  --color-fg: hex(var(--foreground));
+  --color-muted: hex(var(--muted));
+  --color-border: hex(var(--border));
+  --color-card: hex(var(--card));
+  --color-primary: hex(var(--primary));
+
+  /* Radius */
+  --radius-lg: var(--r-lg);
+  --radius-md: var(--r-md);
+  --radius-sm: var(--r-sm);
+
+  /* Fonts */
+  --font-sans: var(--font-sora);
+  --font-display: var(--font-montagu);
 }
 
+/*
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
-}
+}*/
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: hex(var(--background));
+  color: hex(var(--foreground));
+  font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+h1, h2 {
+  font-family: var(--font-display), serif;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-family: var(--font-sans), sans-serif;
+  font-weight: 600;
+}
+

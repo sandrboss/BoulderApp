@@ -1,11 +1,25 @@
 
 
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Sora, Montagu_Slab } from 'next/font/google';
+
+const sora = Sora({
+  subsets: ['latin'],
+  variable: '--font-sora',
+  display: 'swap',
+});
+
+const montagu = Montagu_Slab({
+  subsets: ['latin'],
+  variable: '--font-montagu',
+  display: 'swap',
+});
+
+
+
 import './globals.css';
 import { NavBar } from '@/components/NavBar';
 
-const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Boulder Log',
@@ -18,9 +32,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="de">
+    <html lang="en" className={`${sora.variable} ${montagu.variable}`}>
       <body
-        className={`${inter.className} bg-slate-950 text-slate-50`}
+        className={`bg-slate-950 text-slate-50`}
       >
         <NavBar />
         <div className="pt-2">{children}</div>

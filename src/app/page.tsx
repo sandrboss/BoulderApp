@@ -21,6 +21,9 @@ import {
   uploadImageToBucket,
 } from '@/lib/api';
 
+import { ProblemCard } from '@/components/problem/ProblemCard';
+
+
 type Phase = 'checking' | 'energy' | 'session';
 
 const ENERGY_LABELS: Record<Energy, string> = {
@@ -29,32 +32,7 @@ const ENERGY_LABELS: Record<Energy, string> = {
   high: '🚀 Hohe Energie',
 };
 
-function boulderColorToStyle(color?: string | null): React.CSSProperties {
-  if (!color) return {};
 
-  // normalize
-  const c = color.toLowerCase();
-
-  // map common gym colors to safe rgba tints
-  const map: Record<string, string> = {
-    black: 'rgba(255,255,255,0.3)',
-    white: 'rgba(255,255,255,0.3)',
-    gray: 'rgba(255,255,255,0.3)',
-    grey: 'rgba(255,255,255,0.3)',
-    yellow: 'rgba(255,230,120,0.3)',
-    orange: 'rgba(255,170,80,0.3)',
-    red: 'rgba(255,90,90,0.3)',
-    pink: 'rgba(255,120,200,0.3)',
-    purple: 'rgba(180,120,255,0.3)',
-    blue: 'rgba(120,180,255,0.3)',
-    green: 'rgba(120,220,160,0.3)',
-    brown: 'rgba(180,140,100,0.3)',
-  };
-
-  return {
-    backgroundColor: map[c] ?? 'rgba(255,255,255,0.04)',
-  };
-}
 
 
 
@@ -65,19 +43,6 @@ function getGradeMeta(
   if (!gradeId) return null;
   return grades.find((g) => g.id === gradeId) ?? null;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -437,7 +402,7 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
   // Initial loading
   if (phase === 'checking' && loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+      <main className="min-h-screen flex items-center justify-center bg-bg text-fg">
         <p>Heutige Session wird geprüft…</p>
       </main>
     );
@@ -446,12 +411,12 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
   // Energy selection screen
   if (phase === 'energy') {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50 p-4">
+      <main className="min-h-screen flex items-center justify-center bg-bg text-fg p-4">
         <div className="w-full max-w-md space-y-6">
           <h1 className="text-2xl font-semibold text-center">
             Heute noch keine Session.
           </h1>
-          <p className="text-sm text-slate-300 text-center">
+          <p className="text-sm text-muted text-center">
             Wie fühlst du dich? Deine Energie hilft dir, die Session fair
             einzuordnen – nicht jeder Tag ist ein Rekordtag.
           </p>
@@ -470,20 +435,20 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
                 disabled={creatingEnergy !== null}
                 className={`w-full rounded-xl px-4 py-3 text-left border transition ${
                   energy === 'low'
-                    ? 'border-slate-700 bg-slate-900'
+                    ? 'border-border bg-card'
                     : energy === 'normal'
-                    ? 'border-sky-600/40 bg-slate-900'
+                    ? 'border-sky-600/40 bg-card'
                     : 'border-emerald-500/60 bg-emerald-950/40'
                 } ${
                   creatingEnergy === energy
                     ? 'opacity-70 cursor-wait'
-                    : 'hover:border-emerald-400 hover:bg-slate-900/80'
+                    : 'hover:border-emerald-400 hover:bg-card/80'
                 }`}
               >
                 <div className="font-medium">
                   {ENERGY_LABELS[energy]}
                 </div>
-                <div className="text-xs text-slate-300 mt-1">
+                <div className="text-xs text-muted mt-1">
                   {energy === 'low' &&
                     'Alles gut – wir behandeln diese Session vorsichtig in deinen Trends.'}
                   {energy === 'normal' &&
@@ -502,7 +467,7 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
   // Error fallback
   if (error && !session) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+      <main className="min-h-screen flex items-center justify-center bg-bg text-fg">
         <p>{error}</p>
       </main>
     );
@@ -529,202 +494,107 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
   if (!session) return null;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 p-4">
+    <main className="min-h-screen bg-bg text-fg p-4">
       <div className="max-w-sm mx-auto px-4 space-y-5 pb-28">
         {/* Header */}
         <header className="space-y-1">
-          <h1 className="text-xl font-semibold">Heutige Session</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-xl font-semibold">My current projects</h1>
+          <p className="text-xs text-muted">
             Datum: {session.date} · Energie: {session.energy}
           </p>
           {homeGym && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-fg0">
               Home-Gym: {homeGym.name}
             </p>
           )}
         </header>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         {/* Current projects */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
             Aktuelle Projekte
           </h2>
 
           {problems.length === 0 && (
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-muted">
               Noch keine Projekte – füge unten ein neues hinzu.
             </p>
           )}
 
           <div className="space-y-3">
             {problems.map((problem) => {
-              const isActive = activeProblemId === problem.id;
-              const isLogging = loggingFor === problem.id;
-              const stats = statsByProblem[problem.id];
-              const attempts = stats?.attempts ?? 0;
-              const lastOutcome = stats?.lastOutcome;
-              const isSent = problem.status === 'sent';
+              const stats = statsByProblem[problem.id] ?? {
+                attempts: 0,
+                lastOutcome: null,
+              };
+
+              const gradeMeta = homeGrades.find(
+                (g) => g.id === problem.grade_id
+              );
 
               return (
-                <div
+                <ProblemCard
                   key={problem.id}
-                  style={boulderColorToStyle(problem.boulder_color)}
-                  className={`rounded-2xl border p-3 transition-all ${
-                    isActive
-                      ? 'border-emerald-400 bg-slate-900 shadow-lg scale-[1.02]'
-                      : 'border-slate-700 bg-slate-900/60 hover:border-emerald-300/60'
-                  } ${isSent ? 'opacity-90' : 'opacity-100'}`}
-                  onClick={() => handleToggleActive(problem.id)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        {(() => {
-                          const gradeMeta = getGradeMeta(problem.grade_id, homeGrades);
-                          return (
-                            <>
-                              {gradeMeta?.color && (
-                                <span
-                                  className="h-3 w-3 rounded-sm border border-slate-800"
-                                  style={{ backgroundColor: gradeMeta.color }}
-                                  aria-label="Grad-Farbe"
-                                />
-                              )}
-                              <span>{problem.grade}</span>
-                            </>
-                          );
-                        })()}
-                      </div>
-                      {problem.boulder_color && (
-                        <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                          {problem.boulder_color} holds
-                        </span>
-                      )}
-
-                      <div className="text-xs text-slate-400 mt-0.5">
-                        Status:{' '}
-                        {isSent ? 'Abgehakt (getoppt)' : 'Projekt'}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        Versuche insgesamt: {attempts}
-                      </div>
-                      {lastOutcome && (
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          Letzter Versuch:{' '}
-                          {lastOutcome === 'crux'
-                            ? 'bis zur Crux'
-                            : lastOutcome === 'almost'
-                            ? 'fast getoppt'
-                            : 'getoppt'}
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleDeleteProblem(problem);
-                      }}
-                      disabled={deletingFor === problem.id}
-                      className="text-slate-500 hover:text-red-400 disabled:opacity-50"
-                      aria-label="Projekt löschen"
-                    >
-                      {deletingFor === problem.id ? '…' : '🗑️'}
-                    </button>
-                  </div>
-                  {problem.photo_url && (
-                  <div className="mt-3">
-                    <img
-                      src={problem.photo_url}
-                      alt="Projektfoto"
-                      className="w-full max-h-48 rounded-xl object-cover border border-slate-800"
-                      loading="lazy"
-                    />
-                  </div>
-                  )}
-                  
-                  {isActive && (
-                    <div className="mt-3 flex flex-col gap-2">
-                      <div className="text-xs text-slate-400 mb-1">
-                        Wie weit bist du bei diesem Versuch gekommen?
-                      </div>
-
-                      {(() => {
-                        const sess = sessionStatsByProblem[problem.id];
-                        const attemptsThisSession = sess?.attempts ?? 0;
-                        const lastOutcomeThisSession = sess?.lastOutcome ?? null;
-
-                        // ✅ Your requested rule:
-                        // If problem is already sent, and you haven't logged it in this session yet,
-                        // show "Top" as active until the first attempt is logged.
-                        const defaultTopActive =
-                          problem.status === 'sent' && attemptsThisSession === 0;
-
-                        const isActiveOutcome = (o: Outcome) =>
-                          defaultTopActive ? o === 'sent' : lastOutcomeThisSession === o;
-
-                        return (
-                          <div className="grid grid-cols-2 gap-2">
-                            <LogButton
-                              label="Start"
-                              active={isActiveOutcome('start')}
-                              disabled={isLogging}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleLogAttempt(problem.id, 'start');
-                              }}
-                            />
-                            <LogButton
-                              label="Crux"
-                              active={isActiveOutcome('crux')}
-                              disabled={isLogging}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleLogAttempt(problem.id, 'crux');
-                              }}
-                            />
-                            <LogButton
-                              label="Fast Top"
-                              active={isActiveOutcome('almost')}
-                              disabled={isLogging}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleLogAttempt(problem.id, 'almost');
-                              }}
-                            />
-                            <LogButton
-                              label="Top 🎉"
-                              active={isActiveOutcome('sent')}
-                              disabled={isLogging}
-                              variant="sent"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleLogAttempt(problem.id, 'sent');
-                              }}
-                            />
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                </div>
+                  problem={problem}
+                  gradeColor={gradeMeta?.color}
+                  isActive={activeProblemId === problem.id}
+                  stats={{
+                    attempts: stats.attempts,
+                    bestReach: stats.lastOutcome,
+                  }}
+                  onSelect={() => setActiveProblemId(problem.id)}
+                  onLogAttempt={(outcome: Outcome) => {
+                    void handleLogAttempt(problem.id, outcome);
+                  }}
+                  onDelete={() => {
+                    void handleDeleteProblem(problem);
+                  }}
+                />
               );
             })}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
             {/* Add new project */}
             <form
               onSubmit={handleAddProblem}
-              className="mt-2 rounded-2xl border border-dashed border-slate-600 bg-slate-900/40 p-4 space-y-2"
+              className="mt-2 rounded-2xl border border-dashed border-border bg-card/40 p-4 space-y-2"
             >
-              <label className="text-xs font-medium text-slate-300">
+              <label className="text-xs font-medium text-muted">
                 Neues Projekt hinzufügen
               </label>
 
               {homeGym && homeGrades.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">
+                    <span className="text-xs text-muted">
                       Grad:
                     </span>
                     <select
@@ -732,7 +602,7 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
                       onChange={(e) =>
                         setSelectedGradeId(e.target.value)
                       }
-                      className="flex-1 rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                      className="flex-1 rounded-xl bg-bg border border-border px-3 py-2 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                     >
                       {homeGrades.map((g) => (
                         <option key={g.id} value={g.id}>
@@ -748,12 +618,12 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
                       setNewGradeNote(e.target.value)
                     }
                     placeholder="Notiz / Wand / Bereich (optional)"
-                    className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                    className="w-full rounded-xl bg-bg border border-border px-3 py-2 text-sm text-fg placeholder:text-fg0 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                   />
                 </div>
               ) : (
                 <>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-fg0">
                     Kein Home-Gym mit Grades definiert. Du kannst trotzdem
                     einen freien Grad-Namen verwenden.
                   </p>
@@ -764,19 +634,19 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
                       setNewFreeGrade(e.target.value)
                     }
                     placeholder="z.B. Orange 5B+ rechte Wand"
-                    className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                    className="w-full rounded-xl bg-bg border border-border px-3 py-2 text-sm text-fg placeholder:text-fg0 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                   />
                 </>
               )}
 
               <div className="mt-2 space-y-1">
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-muted">
                   Boulder-Farbe (Hold-Farbe)
                 </label>
                 <select
                   value={newBoulderColor}
                   onChange={(e) => setNewBoulderColor(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-3 text-sm text-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  className="w-full rounded-xl bg-bg border border-border px-3 py-3 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                 >
                   <option value="">— auswählen —</option>
                   <option value="black">Schwarz</option>
@@ -797,13 +667,13 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
                   value={newBoulderColor}
                   onChange={(e) => setNewBoulderColor(e.target.value)}
                   placeholder="oder frei tippen (z.B. neon-pink)"
-                  className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-3 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  className="w-full rounded-xl bg-bg border border-border px-3 py-3 text-sm text-fg placeholder:text-fg0 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                 />
               </div>
 
 
               <div className="mt-2 space-y-1">
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-muted">
                   Optionales Projektfoto:
                 </label>
                 <input
@@ -814,10 +684,10 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
                     const file = e.target.files?.[0] ?? null;
                     setNewProjectPhoto(file);
                   }}
-                  className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border file:border-slate-600 file:bg-slate-800 file:px-3 file:py-1 file:text-xs file:text-slate-100 hover:file:border-emerald-400"
+                  className="block w-full text-xs text-muted file:mr-3 file:rounded-lg file:border file:border-border file:bg-slate-800 file:px-3 file:py-1 file:text-xs file:text-slate-100 hover:file:border-emerald-400"
                 />
                 {newProjectPhoto && (
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-fg0">
                     Ausgewählt: {newProjectPhoto.name}
                   </p>
                 )}
@@ -837,13 +707,28 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
           </div>
         </section>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         {/* End session button */}
-        <div className="fixed inset-x-0 bottom-0 z-30 bg-slate-950/80 backdrop-blur border-t border-slate-800">
+        <div className="fixed inset-x-0 bottom-0 z-30 bg-bg/80 backdrop-blur border-t border-border">
           <div className="max-w-sm mx-auto px-4 py-3">
             <button
               type="button"
               onClick={() => setShowSummary(true)}
-              className="w-full rounded-xl border border-slate-600 bg-slate-900/70 px-4 py-3 text-sm font-medium text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-slate-900 transition"
+              className="w-full rounded-xl border border-border bg-card/70 px-4 py-3 text-sm font-medium text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-card transition"
             >
               Session beenden & Zusammenfassung
             </button>
@@ -855,7 +740,7 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
       {/* Cinematic-ish modal overlay for summary */}
       {showSummary && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl max-h-[85vh] overflow-auto">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card/95 p-4 shadow-2xl max-h-[85vh] overflow-auto">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-sm font-semibold text-slate-200">
                 Session-Zusammenfassung
@@ -863,37 +748,37 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
               <button
                 type="button"
                 onClick={() => setShowSummary(false)}
-                className="text-xs text-slate-400 hover:text-slate-100"
+                className="text-xs text-muted hover:text-slate-100"
               >
                 Schließen
               </button>
             </div>
 
             {totalAttemptsSession === 0 ? (
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-muted">
                 {summaryMessage}
               </p>
             ) : (
               <div className="space-y-1">
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted">
                   Versuche heute:{' '}
                   <span className="font-semibold">
                     {totalAttemptsSession}
                   </span>
                 </p>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted">
                   Bearbeitete Projekte:{' '}
                   <span className="font-semibold">
                     {problemsTouched}
                   </span>
                 </p>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted">
                   Getoppte Projekte heute:{' '}
                   <span className="font-semibold">
                     {sendsSession}
                   </span>
                 </p>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted">
                   Härtester Grad (heute gesendet):{' '}
                   {hardestGradeLabel ? (
                     <span className="inline-flex items-center gap-2 font-semibold">
@@ -912,10 +797,10 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
                     '–'
                   )}
                 </p>
-                <p className="text-sm text-slate-400 mt-2">
+                <p className="text-sm text-muted mt-2">
                   {summaryMessage}
                 </p>
-                <div className="mt-3 space-y-2 border-t border-slate-800 pt-3">
+                <div className="mt-3 space-y-2 border-t border-border pt-3">
             
             </div>
 
@@ -949,11 +834,11 @@ function LogButton({
   const activeStyles =
     variant === 'sent'
       ? 'border-emerald-400 bg-emerald-900'
-      : 'border-emerald-300 bg-slate-900';
+      : 'border-emerald-300 bg-card';
   const inactiveStyles =
     variant === 'sent'
       ? 'border-emerald-500 bg-emerald-950/60 hover:bg-emerald-900'
-      : 'border-slate-600 bg-slate-900 hover:border-emerald-300';
+      : 'border-border bg-card hover:border-emerald-300';
 
   return (
     <button
