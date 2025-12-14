@@ -21,6 +21,8 @@ export type ProblemRow = {
   grade_id: string | null;
   photo_url?: string | null;
   boulder_color?: string | null;
+  title: string | null;
+
 };
 
 export type ProblemStats = {
@@ -98,29 +100,29 @@ export async function getActiveProblems(): Promise<ProblemRow[]> {
   return (data ?? []) as ProblemRow[];
 }
 
-// Create a problem, using gym + grade if available
-export async function createProblem(opts: {
-  gradeLabel: string;
-  gymId?: string;
-  gradeId?: string;
-  photoUrl?: string;
-  boulderColor?: string;
-}) {
+export async function createProblem(
+  homeGymId: string,
+  gradeId: string | null,
+  title: string | null,
+  photoUrl?: string,
+  boulderColor?: string | null
+) {
   const { data, error } = await supabase
     .from('problems')
     .insert({
-      grade: opts.gradeLabel,
-      gym_id: opts.gymId ?? null,
-      grade_id: opts.gradeId ?? null,
-      photo_url: opts.photoUrl ?? null,
-      boulder_color: opts.boulderColor ?? null,
+      gym_id: homeGymId,
+      grade_id: gradeId,
+      title,
+      photo_url: photoUrl,
+      boulder_color: boulderColor,
     })
-    .select('id, grade, status, created_at, gym_id, grade_id, photo_url, boulder_color')
+    .select('*')
     .single();
 
   if (error) throw error;
-  return data as ProblemRow;
+  return data;
 }
+
 
 export async function logAttempt(
   sessionId: string,

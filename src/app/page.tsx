@@ -22,6 +22,7 @@ import {
 } from '@/lib/api';
 
 import { ProblemCard } from '@/components/problem/ProblemCard';
+import { uploadProblemPhoto } from '@/lib/storage';
 
 
 type Phase = 'checking' | 'energy' | 'session';
@@ -34,8 +35,6 @@ const ENERGY_LABELS: Record<Energy, string> = {
 
 
 
-
-
 function getGradeMeta(
   gradeId: string | null | undefined,
   grades: { id: string; color?: string | null }[]
@@ -44,6 +43,13 @@ function getGradeMeta(
   return grades.find((g) => g.id === gradeId) ?? null;
 }
 
+function getGradeLabel(
+  gradeId: string | null,
+  grades: { id: string; name: string }[]
+) {
+  if (!gradeId) return '—';
+  return grades.find((g) => g.id === gradeId)?.name ?? '—';
+}
 
 
 
@@ -56,6 +62,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newBoulderColor, setNewBoulderColor] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+
 
 
   const [creatingEnergy, setCreatingEnergy] = useState<Energy | null>(
@@ -125,6 +133,29 @@ export default function HomePage() {
     void checkToday();
   }, []);
 
+  useEffect(() => {
+  if (!addOpen) return;
+
+  // Prevent background scroll
+  const originalOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setAddOpen(false);
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+
+  return () => {
+    document.body.style.overflow = originalOverflow;
+    window.removeEventListener('keydown', handleKeyDown);
+  };
+}, [addOpen]);
+
+
+
   const loadSessionData = async (sessionId: string) => {
   const [p, stats, home, sessionStats] = await Promise.all([
     getActiveProblems(),
@@ -169,70 +200,57 @@ export default function HomePage() {
 
   
 
-  const handleAddProblem = async (e: React.FormEvent) => {
+  async function handleAddProblem(e: React.FormEvent) {
     e.preventDefault();
-    setAdding(true);
-    setError(null);
+    if (adding) return;
 
     try {
-      let gradeLabel: string;
-      let gymId: string | undefined;
-      let gradeId: string | undefined;
+      setAdding(true);
+
+      // 1. Upload photo (if any)
       let photoUrl: string | undefined;
+      if (newProjectPhoto) {
+        photoUrl = await uploadProblemPhoto(newProjectPhoto);
+      }
+      if (!homeGym) {
+        setError('Bitte zuerst ein Home-Gym auswählen.');
+        return;
+      }
+      const homeGymId = homeGym.id;
+      // 2. Determine gradeId
+      const gradeId = homeGym
+        ? selectedGradeId
+        : null; // free-grade case handled separately if you still support it
 
+      // 3. Determine title (THIS IS THE KEY CHANGE)
+      const title = newGradeNote.trim() || null;
 
-    if (homeGym && homeGrades.length > 0 && selectedGradeId) {
-          const selected = homeGrades.find(
-            (g) => g.id === selectedGradeId
-          );
-          if (!selected) {
-            throw new Error('Ausgewählter Grad nicht gefunden.');
-          }
-          gymId = homeGym.id;
-          gradeId = selected.id;
-          gradeLabel = newGradeNote.trim()
-            ? `${selected.name} – ${newGradeNote.trim()}`
-            : selected.name;
-        } else {
-          if (!newFreeGrade.trim()) {
-            setAdding(false);
-            return;
-          }
-          gradeLabel = newFreeGrade.trim();
-    }
-
-    // ✅ If a project photo was selected, upload it first
-    if (newProjectPhoto) {
-      photoUrl = await uploadImageToBucket(
-        'boulder-photos',
-        newProjectPhoto,
-        `problems/${session?.id ?? 'no-session'}`
+      // 4. Create problem (CLEAN)
+      const created = await createProblem(
+        homeGymId,
+        gradeId,
+        title,
+        photoUrl,
+        newBoulderColor || null
       );
+
+      // 5. Update UI
+      setProblems((prev) => [...prev, created]);
+
+      // 6. Reset form
+      setNewGradeNote('');
+      setNewBoulderColor('');
+      setNewProjectPhoto(null);
+    } catch (err) {
+      console.error(err);
+      setError('Projekt konnte nicht gespeichert werden.');
+    } finally {
+      setAdding(false);
     }
-
-      const created = await createProblem({
-      gradeLabel,
-      gymId,
-      gradeId,
-      photoUrl,
-      boulderColor: newBoulderColor.trim() ? newBoulderColor.trim() : undefined,
-
-    });
-
-    setProblems((prev) => [...prev, created]);
-    setNewGradeNote('');
-    setNewFreeGrade('');
-    setNewProjectPhoto(null);
-  } catch (err: any) {
-    console.error(err);
-    setError('Problem konnte nicht erstellt werden.');
-  } finally {
-    setAdding(false);
-    setNewBoulderColor('');
-
   }
 
-  };
+  
+
 
   const handleLogAttempt = async (
     problemId: string,
@@ -343,250 +361,18 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
 };
 
 
-  // ---- Session summary derived data ----
 
-  const touchedIds = Object.keys(sessionAttempts);
-  const problemsTouched = touchedIds.length;
-  const totalAttemptsSession = touchedIds.reduce(
-    (sum, id) => sum + sessionAttempts[id].attempts,
-    0
-  );
-  const sendsSession = touchedIds.filter(
-    (id) => sessionAttempts[id].sent
-  ).length;
 
-  // Home-gym–aware hardest grade for today
-  let hardestGradeLabel: string | null = null;
-  let hardestGradeIndex = -1;
-
-  for (const id of touchedIds) {
-    if (!sessionAttempts[id].sent) continue;
-
-    const problem = problems.find((p) => p.id === id);
-    if (!problem) continue;
-
-    // Prefer home gym grade ordering
-    if (problem.grade_id && homeGrades.length > 0) {
-      const idx = homeGrades.findIndex((g) => g.id === problem.grade_id);
-      if (idx > hardestGradeIndex) {
-        hardestGradeIndex = idx;
-        hardestGradeLabel =
-          homeGrades[idx]?.name ?? problem.grade ?? null;
-      }
-    } else if (problem.grade && hardestGradeIndex === -1) {
-      // Fallback: just keep first textual grade we find
-      hardestGradeLabel = problem.grade;
-    }
-  }
-
-  let summaryMessage = '';
-  if (totalAttemptsSession === 0) {
-    summaryMessage =
-      'Sobald du Versuche loggst, erscheint hier deine Session-Zusammenfassung.';
-  } else if (sendsSession === 0) {
-    summaryMessage =
-      'Kein Top heute – aber viele Versuche sind starke Aufbauarbeit. Volume-Days zahlen sich später aus. 💪';
-  } else if (sendsSession > 0 && hardestGradeLabel) {
-    if (totalAttemptsSession / sendsSession <= 3) {
-      summaryMessage = `Starker Tag! Du toppst Projekte im Schnitt nach sehr wenigen Versuchen. Härtester Grad heute: ${hardestGradeLabel}. 🚀`;
-    } else {
-      summaryMessage = `Gute Ausdauer-Session! Du hast dir Tops erarbeitet – härtester Grad heute: ${hardestGradeLabel}. 🔁`;
-    }
-  } else {
-    summaryMessage =
-      'Solide Session – deine Versuche bauen Technik und Körperspannung auf, auch wenn heute nichts komplett gefallen ist.';
-  }
-
-  // ---- RENDER ----
-
-  // Initial loading
-  if (phase === 'checking' && loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-bg text-fg">
-        <p>Heutige Session wird geprüft…</p>
-      </main>
-    );
-  }
-
-  // Energy selection screen
-  if (phase === 'energy') {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-bg text-fg p-4">
-        <div className="w-full max-w-md space-y-6">
-          <h1 className="text-2xl font-semibold text-center">
-            Heute noch keine Session.
-          </h1>
-          <p className="text-sm text-muted text-center">
-            Wie fühlst du dich? Deine Energie hilft dir, die Session fair
-            einzuordnen – nicht jeder Tag ist ein Rekordtag.
-          </p>
-
-          {error && (
-            <p className="text-sm text-red-400 text-center">
-              {error}
-            </p>
-          )}
-
-          <div className="space-y-3">
-            {(['low', 'normal', 'high'] as Energy[]).map((energy) => (
-              <button
-                key={energy}
-                onClick={() => void handleCreateSessionWithEnergy(energy)}
-                disabled={creatingEnergy !== null}
-                className={`w-full rounded-xl px-4 py-3 text-left border transition ${
-                  energy === 'low'
-                    ? 'border-border bg-card'
-                    : energy === 'normal'
-                    ? 'border-sky-600/40 bg-card'
-                    : 'border-emerald-500/60 bg-emerald-950/40'
-                } ${
-                  creatingEnergy === energy
-                    ? 'opacity-70 cursor-wait'
-                    : 'hover:border-emerald-400 hover:bg-card/80'
-                }`}
-              >
-                <div className="font-medium">
-                  {ENERGY_LABELS[energy]}
-                </div>
-                <div className="text-xs text-muted mt-1">
-                  {energy === 'low' &&
-                    'Alles gut – wir behandeln diese Session vorsichtig in deinen Trends.'}
-                  {energy === 'normal' &&
-                    'Perfekt für ehrliche Progression über die Zeit.'}
-                  {energy === 'high' &&
-                    'Nice, starker Tag – wir markieren das als High-Energy Session.'}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // Error fallback
-  if (error && !session) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-bg text-fg">
-        <p>{error}</p>
-      </main>
-    );
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-  // If we got here, we have a session and data loaded
-  if (!session) return null;
-
-  return (
-    <main className="min-h-screen bg-bg text-fg p-4">
-      <div className="max-w-sm mx-auto px-4 space-y-5 pb-28">
-        {/* Header */}
-        <header className="space-y-1">
-          <h1 className="text-xl font-semibold">My current projects</h1>
-          <p className="text-xs text-muted">
-            Datum: {session.date} · Energie: {session.energy}
-          </p>
-          {homeGym && (
-            <p className="text-xs text-fg0">
-              Home-Gym: {homeGym.name}
-            </p>
-          )}
-        </header>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        {/* Current projects */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
-            Aktuelle Projekte
-          </h2>
-
-          {problems.length === 0 && (
-            <p className="text-sm text-muted">
-              Noch keine Projekte – füge unten ein neues hinzu.
-            </p>
-          )}
-
-          <div className="space-y-3">
-            {problems.map((problem) => {
-              const stats = statsByProblem[problem.id] ?? {
-                attempts: 0,
-                lastOutcome: null,
-              };
-
-              const gradeMeta = homeGrades.find(
-                (g) => g.id === problem.grade_id
-              );
-
-              return (
-                <ProblemCard
-                  key={problem.id}
-                  problem={problem}
-                  gradeColor={gradeMeta?.color}
-                  isActive={activeProblemId === problem.id}
-                  stats={{
-                    attempts: stats.attempts,
-                    bestReach: stats.lastOutcome,
-                  }}
-                  onSelect={() => setActiveProblemId(problem.id)}
-                  onLogAttempt={(outcome: Outcome) => {
-                    void handleLogAttempt(problem.id, outcome);
-                  }}
-                  onDelete={() => {
-                    void handleDeleteProblem(problem);
-                  }}
-                />
-              );
-            })}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+const AddProblemForm = (
+  <form
+    onSubmit={async (e) => {
+      await handleAddProblem(e);
+      // close modal only when it worked (optional: only close if no error)
+      setAddOpen(false);
+    }}
+    className="space-y-3"
+  >
             {/* Add new project */}
-            <form
-              onSubmit={handleAddProblem}
-              className="mt-2 rounded-2xl border border-dashed border-border bg-card/40 p-4 space-y-2"
-            >
               <label className="text-xs font-medium text-muted">
                 Neues Projekt hinzufügen
               </label>
@@ -703,113 +489,255 @@ const handleDeleteProblem = async (problem: ProblemRow) => {
               >
                 {adding ? 'Wird hinzugefügt…' : 'Projekt speichern'}
               </button>
-            </form>
+  
+    
+
+
+
+  </form>
+);
+
+
+
+
+
+
+
+
+  // ---- RENDER ----
+
+  // Initial loading
+  if (phase === 'checking' && loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-bg text-fg">
+        <p>Heutige Session wird geprüft…</p>
+      </main>
+    );
+  }
+
+  // Energy selection screen
+  if (phase === 'energy') {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-bg text-fg p-4">
+        <div className="w-full max-w-md space-y-6">
+          <h1 className="text-2xl font-semibold text-center">
+            Heute noch keine Session.
+          </h1>
+          <p className="text-sm text-muted text-center">
+            Wie fühlst du dich? Deine Energie hilft dir, die Session fair
+            einzuordnen – nicht jeder Tag ist ein Rekordtag.
+          </p>
+
+          {error && (
+            <p className="text-sm text-red-400 text-center">
+              {error}
+            </p>
+          )}
+
+          <div className="space-y-3">
+            {(['low', 'normal', 'high'] as Energy[]).map((energy) => (
+              <button
+                key={energy}
+                onClick={() => void handleCreateSessionWithEnergy(energy)}
+                disabled={creatingEnergy !== null}
+                className={`w-full rounded-xl px-4 py-3 text-left border transition ${
+                  energy === 'low'
+                    ? 'border-border bg-card'
+                    : energy === 'normal'
+                    ? 'border-sky-600/40 bg-card'
+                    : 'border-emerald-500/60 bg-emerald-950/40'
+                } ${
+                  creatingEnergy === energy
+                    ? 'opacity-70 cursor-wait'
+                    : 'hover:border-emerald-400 hover:bg-card/80'
+                }`}
+              >
+                <div className="font-medium">
+                  {ENERGY_LABELS[energy]}
+                </div>
+                <div className="text-xs text-muted mt-1">
+                  {energy === 'low' &&
+                    'Alles gut – wir behandeln diese Session vorsichtig in deinen Trends.'}
+                  {energy === 'normal' &&
+                    'Perfekt für ehrliche Progression über die Zeit.'}
+                  {energy === 'high' &&
+                    'Nice, starker Tag – wir markieren das als High-Energy Session.'}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Error fallback
+  if (error && !session) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-bg text-fg">
+        <p>{error}</p>
+      </main>
+    );
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  // If we got here, we have a session and data loaded
+  if (!session) return null;
+
+  return (
+    <main className="min-h-screen app-pattern text-fg p-4">
+      <div className="max-w-sm mx-auto px-3 space-y-5 pb-28">
+        {/* Header */}
+        <header className="space-y-1">
+          <p className="text-xs text-muted">
+            Datum: {session.date} · Energie: {session.energy}
+          </p>
+          {homeGym && (
+            <p className="text-xs text-fg0">
+              Home-Gym: {homeGym.name}
+            </p>
+          )}
+        </header>
+
+        <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Current Projects</h1>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="shrink-0 rounded-full bg-white px-3 py-3 text-sm font-semibold hover:bg-slate-50"
+          aria-label="Neues Projekt hinzufügen"
+          title="Neues Projekt"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 8H0V6H6V0H8V6H14V8H8V14H6V8Z" fill="black"/>
+          </svg>
+        </button>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        {/* Current projects */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
+            Aktuelle Projekte
+          </h2>
+
+          {problems.length === 0 && (
+            <p className="text-sm text-muted">
+              Noch keine Projekte – füge unten ein neues hinzu.
+            </p>
+          )}
+
+          <div className="space-y-6">
+            {problems.map((problem) => {
+              const stats = statsByProblem[problem.id] ?? {
+                attempts: 0,
+                lastOutcome: null,
+              };
+
+              const gradeMeta = homeGrades.find(
+                (g) => g.id === problem.grade_id
+              );
+
+              return (
+                <ProblemCard
+                  key={problem.id}
+                  problem={problem}
+                  gradeLabel={getGradeLabel(problem.grade_id, homeGrades)}
+                  gradeColor={gradeMeta?.color}
+                  isActive={activeProblemId === problem.id}
+                  stats={{
+                    attempts: stats.attempts,
+                    bestReach: stats.lastOutcome,
+                  }}
+                  onSelect={() => setActiveProblemId(problem.id)}
+                  onLogAttempt={(outcome: Outcome) => {
+                    void handleLogAttempt(problem.id, outcome);
+                  }}
+                  onDelete={() => {
+                    void handleDeleteProblem(problem);
+                  }}
+                />
+              );
+            })}
+
+
+
+
+
+
           </div>
         </section>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        {/* End session button */}
-        <div className="fixed inset-x-0 bottom-0 z-30 bg-bg/80 backdrop-blur border-t border-border">
-          <div className="max-w-sm mx-auto px-4 py-3">
-            <button
-              type="button"
-              onClick={() => setShowSummary(true)}
-              className="w-full rounded-xl border border-border bg-card/70 px-4 py-3 text-sm font-medium text-slate-100 hover:border-emerald-400 hover:text-emerald-200 hover:bg-card transition"
-            >
-              Session beenden & Zusammenfassung
-            </button>
-          </div>
-        </div>
-
       </div>
 
-      {/* Cinematic-ish modal overlay for summary */}
-      {showSummary && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-card/95 p-4 shadow-2xl max-h-[85vh] overflow-auto">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-slate-200">
-                Session-Zusammenfassung
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowSummary(false)}
-                className="text-xs text-muted hover:text-slate-100"
-              >
-                Schließen
-              </button>
-            </div>
+      {addOpen && (
+        <div className="fixed inset-0 z-50">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setAddOpen(false)}
+          />
 
-            {totalAttemptsSession === 0 ? (
-              <p className="text-sm text-muted">
-                {summaryMessage}
-              </p>
-            ) : (
-              <div className="space-y-1">
-                <p className="text-sm text-muted">
-                  Versuche heute:{' '}
-                  <span className="font-semibold">
-                    {totalAttemptsSession}
-                  </span>
-                </p>
-                <p className="text-sm text-muted">
-                  Bearbeitete Projekte:{' '}
-                  <span className="font-semibold">
-                    {problemsTouched}
-                  </span>
-                </p>
-                <p className="text-sm text-muted">
-                  Getoppte Projekte heute:{' '}
-                  <span className="font-semibold">
-                    {sendsSession}
-                  </span>
-                </p>
-                <p className="text-sm text-muted">
-                  Härtester Grad (heute gesendet):{' '}
-                  {hardestGradeLabel ? (
-                    <span className="inline-flex items-center gap-2 font-semibold">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{
-                          backgroundColor:
-                            homeGrades.find(
-                              (g) => g.name === hardestGradeLabel
-                            )?.color ?? '#64748b',
-                        }}
-                      />
-                      {hardestGradeLabel}
-                    </span>
-                  ) : (
-                    '–'
-                  )}
-                </p>
-                <p className="text-sm text-muted mt-2">
-                  {summaryMessage}
-                </p>
-                <div className="mt-3 space-y-2 border-t border-border pt-3">
-            
-            </div>
-
+          {/* Modal */}
+          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2">
+            <div className="rounded-2xl bg-white p-4 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold">Neues Projekt</h2>
+                <button
+                  type="button"
+                  onClick={() => setAddOpen(false)}
+                  className="rounded-full px-2 py-1 text-sm hover:bg-slate-100"
+                >
+                  ✕
+                </button>
               </div>
-            )}
+
+              {/* form */}
+              <div className="mt-3">
+                {AddProblemForm}
+              </div>
+            </div>
           </div>
         </div>
       )}
+
+
     </main>
+    
   );
 }
 

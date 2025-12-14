@@ -3,7 +3,7 @@
 
 :root {
   /* Base colors */
-  --background: #F1F0EE; /* slate-50 */
+  --background: #E9E9E9; /* slate-50 */
   --foreground: #F1F0EE;    /* slate-900 */
   --muted: #a9a9a9;      /* slate-500 */
   --border: #dbdbdb;     /* slate-200 */
@@ -24,6 +24,9 @@
 
   /* Interaction */
   --tap: 44px;
+
+  /* Assets */
+  --bg-pattern: url('/patterns/bg-pattern.png');
 }
 
 
@@ -54,11 +57,18 @@
   }
 }*/
 
+
 body {
-  background: hex(var(--background));
-  color: hex(var(--foreground));
+  background-color: rgb(var(--background));
+  background-image: var(--bg-pattern);
+  background-repeat: repeat;
+  background-size: 40px 40px;
+  background-blend-mode: overlay;
+
+  color: rgb(var(--foreground));
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
 
 h1, h2 {
   font-family: var(--font-display), serif;
@@ -70,3 +80,14 @@ h3 {
   font-weight: 600;
 }
 
+.app-pattern {
+  background-color: rgb(var(--background));
+  background-image: url("/patterns/bg-pattern.png");
+  background-repeat: repeat;
+  background-size: 30px 30px;
+  background-blend-mode: overlay;
+}
+
+.fontfunky {
+  font-family: var(--font-display), serif;
+}
