@@ -23,6 +23,10 @@ import {
 
 import { ProblemCard } from '@/components/problem/ProblemCard';
 import { uploadProblemPhoto } from '@/lib/storage';
+import { ProblemStack } from '@/components/problem/ProblemStack';
+import { AttemptPanel } from '@/components/problem/AttemptPanel';
+
+
 
 
 type Phase = 'checking' | 'energy' | 'session';
@@ -63,6 +67,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [newBoulderColor, setNewBoulderColor] = useState('');
   const [addOpen, setAddOpen] = useState(false);
+  
 
 
 
@@ -153,6 +158,10 @@ export default function HomePage() {
     window.removeEventListener('keydown', handleKeyDown);
   };
 }, [addOpen]);
+
+
+const [activeIndex, setActiveIndex] = useState(0);
+const activeProblem = problems.length > 0 ? problems[activeIndex] : null;
 
 
 
@@ -253,8 +262,7 @@ export default function HomePage() {
 
 
   const handleLogAttempt = async (
-    problemId: string,
-    outcome: Outcome
+    problemId: string, outcome: Outcome
   ) => {
     if (!session) return;
     setLoggingFor(problemId);
@@ -320,45 +328,40 @@ export default function HomePage() {
     }
   };
 
-const handleDeleteProblem = async (problem: ProblemRow) => {
-  setDeletingFor(problem.id);
+const handleDeleteProblem = async (problemId: string) => {
+  setDeletingFor(problemId);
   setError(null);
 
   try {
-    await deleteProblemWithPhoto(problem);
+    const problem = problems.find((p) => p.id === problemId);
 
-    // remove from list
-    setProblems((prev) => prev.filter((p) => p.id !== problem.id));
+    await deleteProblemWithPhoto({
+      id: problemId,
+      photo_url: problem?.photo_url ?? null,
+    });
 
-    // remove from maps
+
+    setProblems((prev) => prev.filter((p) => p.id !== problemId));
+
     setStatsByProblem((prev) => {
       const copy = { ...prev };
-      delete copy[problem.id];
+      delete copy[problemId];
       return copy;
     });
 
-    setSessionAttempts((prev) => {
-      const copy = { ...prev };
-      delete copy[problem.id];
-      return copy;
-    });
+    setActiveIndex((i) => Math.min(i, Math.max(0, problems.length - 2)));
 
-    setSessionStatsByProblem((prev) => {
-      const copy = { ...prev };
-      delete copy[problem.id];
-      return copy;
-    });
-
-    if (activeProblemId === problem.id) {
+    if (activeProblemId === problemId) {
       setActiveProblemId(null);
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error(err);
     setError('Problem konnte nicht gelöscht werden.');
   } finally {
     setDeletingFor(null);
   }
 };
+
 
 
 
@@ -497,6 +500,22 @@ const AddProblemForm = (
   </form>
 );
 
+// grade label shown on card (e.g. "V3", "Orange")
+const gradeLabelFor = (p: ProblemRow) => {
+  if (!p.grade_id) return '—';
+  return homeGrades.find((g) => g.id === p.grade_id)?.name ?? '—';
+};
+
+// grade color (for the blob SVG / chip)
+const gradeColorFor = (p: ProblemRow) => {
+  if (!p.grade_id) return undefined;
+  return homeGrades.find((g) => g.id === p.grade_id)?.color ?? undefined;
+};
+
+// optional: type label (can be static for now)
+const typeLabelFor = (_p: ProblemRow) => {
+  return 'overhang'; // MVP default
+};
 
 
 
@@ -607,7 +626,7 @@ const AddProblemForm = (
 
         <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Current Projects</h1>
+          <h1 className="text-xl center font-semibold">My Current Projects</h1>
         </div>
 
         <button
@@ -628,67 +647,29 @@ const AddProblemForm = (
 
 
 
+<ProblemStack
+  problems={problems}
+  statsByProblem={statsByProblem}
+  gradeLabelFor={gradeLabelFor}
+  gradeColorFor={gradeColorFor}
+  typeLabelFor={typeLabelFor}
+  activeIndex={activeIndex}
+  setActiveIndex={setActiveIndex}
+  onDelete={(id) => handleDeleteProblem(id)}
+/>
+
+
+{activeProblem && (
+  <AttemptPanel
+    onLogAttempt={(o) => handleLogAttempt(activeProblem.id, o)}
+  />
+)}
 
 
 
 
 
-
-
-
-
-
-
-        {/* Current projects */}
-        <section className="space-y-3">
-
-          {problems.length === 0 && (
-            <p className="text-sm text-muted">
-              Noch keine Projekte – füge unten ein neues hinzu.
-            </p>
-          )}
-
-          <div className="space-y-6">
-            {problems.map((problem) => {
-              const stats = statsByProblem[problem.id] ?? {
-                attempts: 0,
-                lastOutcome: null,
-              };
-
-              const gradeMeta = homeGrades.find(
-                (g) => g.id === problem.grade_id
-              );
-
-              return (
-                <ProblemCard
-                  key={problem.id}
-                  problem={problem}
-                  gradeLabel={getGradeLabel(problem.grade_id, homeGrades)}
-                  gradeColor={gradeMeta?.color}
-                  isActive={activeProblemId === problem.id}
-                  stats={{
-                    attempts: stats.attempts,
-                    bestReach: stats.lastOutcome,
-                  }}
-                  onSelect={() => setActiveProblemId(problem.id)}
-                  onLogAttempt={(outcome: Outcome) => {
-                    void handleLogAttempt(problem.id, outcome);
-                  }}
-                  onDelete={() => {
-                    void handleDeleteProblem(problem);
-                  }}
-                />
-              );
-            })}
-
-
-
-
-
-
-          </div>
-        </section>
-
+       
       </div>
 
       {addOpen && (
@@ -700,7 +681,7 @@ const AddProblemForm = (
           />
 
           {/* Modal */}
-          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-md -translate-x-1/2 ui-transition -translate-y-1/2">
+          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2">
             <div className="rounded-2xl bg-white p-4 shadow-xl">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold">Neues Projekt</h2>

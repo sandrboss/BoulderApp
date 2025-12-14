@@ -70,7 +70,7 @@ export function ProblemCard({
   
             {/* Grade chip */}
             <div
-              className="relative z-20 h-14 w-14 text-md font-regular"
+              className="relative z-20 h-14 w-14 text-md font-medium"
               style={{ color: gradeColor ?? '#ffffff' }}
               aria-label="Grad"
               title="Grad"
@@ -112,7 +112,7 @@ export function ProblemCard({
               e.stopPropagation();
               onDelete();
             }}
-            className="absolute right-3 text-xs top-3 rounded-full bg-white/70 p-2 shadow-sm backdrop-blur hover:bg-white"
+            className="absolute right-3 z-10 text-xs top-3 rounded-full bg-white/70 p-2 shadow-sm backdrop-blur hover:bg-white"
             aria-label="Delete Problem"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -176,7 +176,7 @@ export function ProblemCard({
 
       {/* actions */}
       {/* actions (animated open/close) */}
-{onLogAttempt && (
+{/*onLogAttempt && (
   <div
     className={[
       'ui-transition overflow-hidden',
@@ -206,7 +206,7 @@ export function ProblemCard({
       </div>
     </div>
   </div>
-)}
+)*/}
 
     </Card>
     </div>
