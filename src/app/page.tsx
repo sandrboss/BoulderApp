@@ -540,7 +540,7 @@ const AddProblemForm = (
                 key={energy}
                 onClick={() => void handleCreateSessionWithEnergy(energy)}
                 disabled={creatingEnergy !== null}
-                className={`w-full rounded-xl px-4 py-3 text-left border transition ${
+                className={`w-full rounded-xl px-4 py-3 text-left border ui-transition ${
                   energy === 'low'
                     ? 'border-border bg-card'
                     : energy === 'normal'
@@ -602,18 +602,8 @@ const AddProblemForm = (
 
   return (
     <main className="min-h-screen app-pattern text-fg p-4">
-      <div className="max-w-sm mx-auto px-3 space-y-5 pb-28">
-        {/* Header */}
-        <header className="space-y-1">
-          <p className="text-xs text-muted">
-            Datum: {session.date} · Energie: {session.energy}
-          </p>
-          {homeGym && (
-            <p className="text-xs text-fg0">
-              Home-Gym: {homeGym.name}
-            </p>
-          )}
-        </header>
+      <div className="max-w-sm mx-auto px-3 space-y-5 pb-20">
+
 
         <div className="flex items-start justify-between">
         <div>
@@ -651,9 +641,6 @@ const AddProblemForm = (
 
         {/* Current projects */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
-            Aktuelle Projekte
-          </h2>
 
           {problems.length === 0 && (
             <p className="text-sm text-muted">
@@ -713,7 +700,7 @@ const AddProblemForm = (
           />
 
           {/* Modal */}
-          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2">
+          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-md -translate-x-1/2 ui-transition -translate-y-1/2">
             <div className="rounded-2xl bg-white p-4 shadow-xl">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold">Neues Projekt</h2>
@@ -757,7 +744,7 @@ function LogButton({
   onClick,
 }: LogButtonProps) {
   const base =
-  'rounded-xl border px-3 py-3 text-sm leading-tight min-h-[44px] transition disabled:opacity-60';
+  'rounded-xl border px-3 py-3 text-sm leading-tight min-h-[44px] ui-transition disabled:opacity-60';
 
   const activeStyles =
     variant === 'sent'

@@ -175,28 +175,39 @@ export function ProblemCard({
       </div>
 
       {/* actions */}
-      {isActive && onLogAttempt && (
-        <div className="border-t border-border bg-card px-4 py-4">
-          <p className="mb-3 text-center text-sm font-medium text-fg">
-            Wie weit bist du bei diesem Versuch gekommen?
-          </p>
+      {/* actions (animated open/close) */}
+{onLogAttempt && (
+  <div
+    className={[
+      'ui-transition overflow-hidden',
+      isActive
+  ? 'max-h-[260px] opacity-100 translate-y-0'
+  : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none',
+    ].join(' ')}
+  >
+    <div className="bg-card px-4 py-4">
+      <p className="mb-3 text-center text-sm font-medium text-fg">
+        Wie weit bist du bei diesem Versuch gekommen?
+      </p>
 
-          <div className="grid grid-cols-2 gap-2">
-            {(['start', 'crux', 'almost', 'sent'] as Outcome[]).map((o) => (
-              <Button
-                key={o}
-                variant={o === 'sent' ? 'primary' : 'secondary'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onLogAttempt(o);
-                }}
-              >
-                {outcomeLabel[o]}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-2">
+        {(['start', 'crux', 'almost', 'sent'] as Outcome[]).map((o) => (
+          <Button
+            key={o}
+            variant={o === 'sent' ? 'primary' : 'secondary'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onLogAttempt(o);
+            }}
+          >
+            {outcomeLabel[o]}
+          </Button>
+        ))}
+      </div>
+    </div>
+  </div>
+)}
+
     </Card>
     </div>
   );

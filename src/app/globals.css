@@ -91,3 +91,7 @@ h3 {
 .fontfunky {
   font-family: var(--font-display), serif;
 }
+
+.ui-transition {
+  transition: all 300ms ease-in-out;
+}
