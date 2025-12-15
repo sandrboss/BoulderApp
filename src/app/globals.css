@@ -99,3 +99,8 @@ h3 {
 html, body {
   background: #fff;
 }
+
+.nodrag {
+  -webkit-user-drag: none;
+  user-drag: none;
+}

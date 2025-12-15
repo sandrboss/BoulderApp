@@ -60,11 +60,11 @@ export function ProblemCard({
               <img
                 src={problem.photo_url}
                 alt=""
-                className="h-80 w-full object-cover opacity-90"
+                //className="h-80 w-full object-cover opacity-90"
                 loading="lazy"
                 draggable={false}
-                onDragStart={(e) => e.preventDefault()}
-                style={{ WebkitUserDrag: 'none' }}
+onDragStart={(e) => e.preventDefault()}
+className="h-80 w-full object-cover opacity-90 select-none nodrag"
               />
 
               <div className="absolute left-1/2 -translate-x-1/2 -bottom-6 flex items-center">

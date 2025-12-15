@@ -25,7 +25,7 @@ import { ProblemCard } from '@/components/problem/ProblemCard';
 import { uploadProblemPhoto } from '@/lib/storage';
 import { ProblemStack } from '@/components/problem/ProblemStack';
 import { AttemptPanel } from '@/components/problem/AttemptPanel';
-
+import { AddProblemModal } from '@/components/problem/AddProblemModal';
 
 
 
@@ -65,9 +65,9 @@ export default function HomePage() {
   const [session, setSession] = useState<SessionRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [newBoulderColor, setNewBoulderColor] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   
+
 
 
 
@@ -94,11 +94,8 @@ export default function HomePage() {
   const [homeGym, setHomeGym] = useState<GymRow | null>(null);
   const [homeGrades, setHomeGrades] = useState<GymGradeRow[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState<string>('');
-  const [newGradeNote, setNewGradeNote] = useState('');
-  const [newFreeGrade, setNewFreeGrade] = useState('');
   const [adding, setAdding] = useState(false);
-  // right below newFreeGrade / adding / etc.
-  const [newProjectPhoto, setNewProjectPhoto] = useState<File | null>(null);
+
 
 
   // Session-only stats for summary
@@ -209,54 +206,48 @@ const activeProblem = problems.length > 0 ? problems[activeIndex] : null;
 
   
 
-  async function handleAddProblem(e: React.FormEvent) {
-    e.preventDefault();
-    if (adding) return;
+async function handleAddProblem(payload: {
+  gradeId: string;
+  title: string;
+  boulderColor: string;
+  photo: File;
+}) {
+  if (adding) return;
 
-    try {
-      setAdding(true);
-
-      // 1. Upload photo (if any)
-      let photoUrl: string | undefined;
-      if (newProjectPhoto) {
-        photoUrl = await uploadProblemPhoto(newProjectPhoto);
-      }
-      if (!homeGym) {
-        setError('Bitte zuerst ein Home-Gym auswählen.');
-        return;
-      }
-      const homeGymId = homeGym.id;
-      // 2. Determine gradeId
-      const gradeId = homeGym
-        ? selectedGradeId
-        : null; // free-grade case handled separately if you still support it
-
-      // 3. Determine title (THIS IS THE KEY CHANGE)
-      const title = newGradeNote.trim() || null;
-
-      // 4. Create problem (CLEAN)
-      const created = await createProblem(
-        homeGymId,
-        gradeId,
-        title,
-        photoUrl,
-        newBoulderColor || null
-      );
-
-      // 5. Update UI
-      setProblems((prev) => [...prev, created]);
-
-      // 6. Reset form
-      setNewGradeNote('');
-      setNewBoulderColor('');
-      setNewProjectPhoto(null);
-    } catch (err) {
-      console.error(err);
-      setError('Projekt konnte nicht gespeichert werden.');
-    } finally {
-      setAdding(false);
-    }
+  if (!homeGym || homeGrades.length === 0) {
+    setError('Bitte zuerst ein Home-Gym mit Grades einrichten.');
+    return;
   }
+
+  try {
+    setAdding(true);
+    setError(null);
+
+    // 1) upload required photo
+    const photoUrl = await uploadProblemPhoto(payload.photo);
+
+    // 2) create problem (title required)
+    const created = await createProblem(
+      homeGym.id,
+      payload.gradeId,
+      payload.title,        // required title
+      photoUrl,             // required photo
+      payload.boulderColor  // hold color
+    );
+
+    // 3) update UI
+    setProblems((prev) => [...prev, created]);
+
+    // Keep selection stable
+    setSelectedGradeId(payload.gradeId);
+  } catch (err) {
+    console.error(err);
+    setError('Problem konnte nicht gespeichert werden.');
+  } finally {
+    setAdding(false);
+  }
+}
+
 
   
 
@@ -364,141 +355,6 @@ const handleDeleteProblem = async (problemId: string) => {
 
 
 
-
-
-const AddProblemForm = (
-  <form
-    onSubmit={async (e) => {
-      await handleAddProblem(e);
-      // close modal only when it worked (optional: only close if no error)
-      setAddOpen(false);
-    }}
-    className="space-y-3"
-  >
-            {/* Add new project */}
-              <label className="text-xs font-medium text-muted">
-                Neues Projekt hinzufügen
-              </label>
-
-              {homeGym && homeGrades.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted">
-                      Grad:
-                    </span>
-                    <select
-                      value={selectedGradeId}
-                      onChange={(e) =>
-                        setSelectedGradeId(e.target.value)
-                      }
-                      className="flex-1 rounded-xl bg-bg border border-border px-3 py-2 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                    >
-                      {homeGrades.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name} ({g.color})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <input
-                    type="text"
-                    value={newGradeNote}
-                    onChange={(e) =>
-                      setNewGradeNote(e.target.value)
-                    }
-                    placeholder="Notiz / Wand / Bereich (optional)"
-                    className="w-full rounded-xl bg-bg border border-border px-3 py-2 text-sm text-fg placeholder:text-fg0 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                  />
-                </div>
-              ) : (
-                <>
-                  <p className="text-xs text-fg0">
-                    Kein Home-Gym mit Grades definiert. Du kannst trotzdem
-                    einen freien Grad-Namen verwenden.
-                  </p>
-                  <input
-                    type="text"
-                    value={newFreeGrade}
-                    onChange={(e) =>
-                      setNewFreeGrade(e.target.value)
-                    }
-                    placeholder="z.B. Orange 5B+ rechte Wand"
-                    className="w-full rounded-xl bg-bg border border-border px-3 py-2 text-sm text-fg placeholder:text-fg0 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                  />
-                </>
-              )}
-
-              <div className="mt-2 space-y-1">
-                <label className="text-xs text-muted">
-                  Boulder-Farbe (Hold-Farbe)
-                </label>
-                <select
-                  value={newBoulderColor}
-                  onChange={(e) => setNewBoulderColor(e.target.value)}
-                  className="w-full rounded-xl bg-bg border border-border px-3 py-3 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                >
-                  <option value="">— auswählen —</option>
-                  <option value="black">Schwarz</option>
-                  <option value="white">Weiß</option>
-                  <option value="gray">Grau</option>
-                  <option value="yellow">Gelb</option>
-                  <option value="orange">Orange</option>
-                  <option value="red">Rot</option>
-                  <option value="pink">Pink</option>
-                  <option value="purple">Lila</option>
-                  <option value="blue">Blau</option>
-                  <option value="green">Grün</option>
-                  <option value="brown">Braun</option>
-                </select>
-
-                <input
-                  type="text"
-                  value={newBoulderColor}
-                  onChange={(e) => setNewBoulderColor(e.target.value)}
-                  placeholder="oder frei tippen (z.B. neon-pink)"
-                  className="w-full rounded-xl bg-bg border border-border px-3 py-3 text-sm text-fg placeholder:text-fg0 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                />
-              </div>
-
-
-              <div className="mt-2 space-y-1">
-                <label className="text-xs text-muted">
-                  Optionales Projektfoto:
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    setNewProjectPhoto(file);
-                  }}
-                  className="block w-full text-xs text-muted file:mr-3 file:rounded-lg file:border file:border-border file:bg-slate-800 file:px-3 file:py-1 file:text-xs file:text-slate-100 hover:file:border-emerald-400"
-                />
-                {newProjectPhoto && (
-                  <p className="text-[11px] text-fg0">
-                    Ausgewählt: {newProjectPhoto.name}
-                  </p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={
-                  adding ||
-                  (!homeGym && !newFreeGrade.trim())
-                }
-                className="mt-2 w-full rounded-xl border border-emerald-500/80 bg-emerald-950/60 px-3 py-2 text-sm font-medium hover:bg-emerald-900 disabled:opacity-60"
-              >
-                {adding ? 'Wird hinzugefügt…' : 'Projekt speichern'}
-              </button>
-  
-    
-
-
-
-  </form>
-);
 
 // grade label shown on card (e.g. "V3", "Orange")
 const gradeLabelFor = (p: ProblemRow) => {
@@ -664,36 +520,17 @@ const typeLabelFor = (_p: ProblemRow) => {
 
          </div>
 
-      {addOpen && (
-        <div className="fixed inset-0 z-50">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setAddOpen(false)}
-          />
+<AddProblemModal
+  open={addOpen}
+  onClose={() => setAddOpen(false)}
+  homeGym={homeGym}
+  homeGrades={homeGrades}
+  initialGradeId={selectedGradeId}
+  submitting={adding}
+  error={error}
+  onSubmit={handleAddProblem}
+/>
 
-          {/* Modal */}
-          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2">
-            <div className="rounded-2xl bg-white p-4 shadow-xl">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold">Neues Projekt</h2>
-                <button
-                  type="button"
-                  onClick={() => setAddOpen(false)}
-                  className="rounded-full px-2 py-1 text-sm hover:bg-slate-100"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* form */}
-              <div className="mt-3">
-                {AddProblemForm}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
     </main>
