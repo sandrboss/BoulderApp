@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   themeColor: '#ffffff',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default', // dark icons/text on light bar
+    statusBarStyle: 'default', // dark text/icons on light bar
   },
   icons: {
     apple: '/apple-touch-icon.png',
@@ -42,15 +42,23 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${sora.variable} ${montagu.variable}`}>
       <head>
-        {/* iOS PWA icon + status bar style (most reliable) */}
+        {/* iOS PWA + status bar */}
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Claimb" />
         <meta name="theme-color" content="#ffffff" />
       </head>
 
       <body className="bg-white text-slate-50">
+        {/* iOS safe-area top background (fixes black bar) */}
+        <div
+          className="fixed left-0 right-0 top-0 z-[9999] bg-white"
+          style={{ height: 'env(safe-area-inset-top)' }}
+        />
+
         <NavBar />
+
         <div className="pt-2">{children}</div>
       </body>
     </html>
