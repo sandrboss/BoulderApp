@@ -2,9 +2,10 @@
 
 import * as React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import type { HTMLMotionProps } from 'framer-motion';
 import type { GymGradeRow } from '@/lib/api';
 
-const TYPES = ['Slab', 'Power', 'Tech', 'Dyno', 'Modern'];
+const TYPES = ['Slab', 'Power', 'Tech', 'Dyno', 'Modern'] as const;
 
 const HOLD_COLORS = [
   { name: 'Black', color: '#000000' },
@@ -18,7 +19,7 @@ const HOLD_COLORS = [
   { name: 'Blue', color: '#60a5fa' },
   { name: 'Green', color: '#86efac' },
   { name: 'Brown', color: '#a16207' },
-];
+] as const;
 
 type Props = {
   open: boolean;
@@ -26,15 +27,13 @@ type Props = {
 
   gymName?: string | null;
 
-  // ✅ grades from backend
+  // grades from backend
   homeGrades: GymGradeRow[];
-
-  // optional default selection
   initialGradeId?: string;
 
   onSave: (data: {
     title: string;
-    gradeId: string; // ✅ backend grade id
+    gradeId: string;
     holdColor: string;
     type: string; // fake for now
     image: File;
@@ -53,9 +52,25 @@ export function AddProblemSheet({
 
   const [title, setTitle] = React.useState('');
   const [gradeId, setGradeId] = React.useState('');
-  const [type, setType] = React.useState('Modern'); // fake for now
-  const [holdColor, setHoldColor] = React.useState('Black');
+  const [type, setType] = React.useState<(typeof TYPES)[number]>('Modern'); // fake
+  const [holdColor, setHoldColor] = React.useState<(typeof HOLD_COLORS)[number]['name']>('Black');
   const [image, setImage] = React.useState<File | null>(null);
+
+  // avoid objectURL leaks
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!image) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(image);
+    setPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [image]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -89,7 +104,7 @@ export function AddProblemSheet({
         <>
           {/* backdrop */}
           <motion.div
-            className="fixed inset-0 z-99 bg-black/50"
+            className="fixed inset-0 z-40 bg-black/50"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -98,7 +113,7 @@ export function AddProblemSheet({
 
           {/* sheet */}
           <motion.div
-            className="fixed inset-x-0 bottom-0 z-100 rounded-t-3xl bg-white text-black"
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl bg-white text-black"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -115,7 +130,7 @@ export function AddProblemSheet({
               <div className="h-1.5 w-12 rounded-full bg-gray-300" />
             </div>
 
-            <div className="px-5 pb-8 pt-4 space-y-6">
+            <div className="px-5 pb-8 pt-4 space-y-5">
               {/* header */}
               <div className="text-center">
                 <h2 className="text-lg font-semibold">Add a new problem</h2>
@@ -130,96 +145,108 @@ export function AddProblemSheet({
               )}
 
               {/* photo picker + preview */}
-              <label className="block">
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  disabled={!canAdd}
-                  onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-                />
+              <div className="space-y-2">
+                <label className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                  Photo (required)
+                </label>
 
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="flex h-12 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-gray-300 text-gray-500"
-                >
-                  {image ? (
-                    // small preview
-                    // NOTE: objectURL is fine for preview; can optionally revoke on cleanup
-                    <img
-                      src={URL.createObjectURL(image)}
-                      alt=""
-                      className="h-full w-full rounded-xl object-cover"
-                      draggable={false}
-                    />
-                  ) : (
-                    <span>Add a photo</span>
-                  )}
-                </motion.div>
-              </label>
+                <label className="block">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={!canAdd}
+                    onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+                  />
+
+                  <motion.div
+                    whileHover={canAdd ? { scale: 1.01 } : undefined}
+                    whileTap={canAdd ? { scale: 0.98 } : undefined}
+                    className="flex h-32 cursor-pointer items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 text-gray-500 overflow-hidden"
+                  >
+                    {previewUrl ? (
+                      <img
+                        src={previewUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-black text-white">
+                          +
+                        </span>
+                        Add a photo
+                      </div>
+                    )}
+                  </motion.div>
+                </label>
+              </div>
 
               {/* title */}
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Give it a name"
-                disabled={!canAdd}
-                className="w-full border-b-2 border-black bg-transparent py-2 text-center text-lg focus:outline-none disabled:opacity-50"
-              />
+              <div className="space-y-2">
+                <label className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                  Title
+                </label>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Give it a name"
+                  disabled={!canAdd}
+                  className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-center text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/60 disabled:opacity-50"
+                />
+              </div>
 
-              {/* grade (from backend) */}
+              {/* grade swatches */}
               <Section title="Grade">
-                {homeGrades.map((g) => {
-                  const selected = gradeId === g.id;
-
-                  return (
-                    <motion.button
-                      key={g.id}
-                      disabled={!canAdd}
-                      onClick={() => setGradeId(g.id)}
-                      whileHover={canAdd ? { y: -2, scale: 1.03 } : undefined}
-                      whileTap={canAdd ? { scale: 0.96 } : undefined}
-                      className={[
-                        'flex h-12 w-14 flex-col items-center justify-center gap-1 rounded-2xl transition',
-                        selected
-                          ? 'border-2 border-black bg-white'
-                          : 'bg-gray-200',
-                        !canAdd ? 'opacity-50 cursor-not-allowed' : '',
-                      ].join(' ')}
-                    >
-                      {/* color dot */}
-                     
-
-                      {/* label */}
-                      <span className="text-xs font-small">{g.name}</span>
-                    </motion.button>
-                  );
-                })}
+                <div className="flex flex-wrap gap-2">
+                  {homeGrades.map((g) => {
+                    const selected = gradeId === g.id;
+                    return (
+                      <motion.button
+                        key={g.id}
+                        disabled={!canAdd}
+                        onClick={() => setGradeId(g.id)}
+                        whileHover={canAdd ? { y: -2, scale: 1.03 } : undefined}
+                        whileTap={canAdd ? { scale: 0.96 } : undefined}
+                        className={[
+                          'flex h-20 w-16 flex-col items-center justify-center gap-2 rounded-2xl transition',
+                          selected ? 'border-2 border-black bg-white' : 'bg-gray-200',
+                          !canAdd ? 'opacity-50 cursor-not-allowed' : '',
+                        ].join(' ')}
+                      >
+                        <span
+                          className="h-6 w-6 rounded-full"
+                          style={{ backgroundColor: g.color ?? '#111827' }}
+                        />
+                        <span className="text-sm font-medium">{g.name}</span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
               </Section>
 
-              {/* type (fake) */}
+              {/* type segmented slider (one line) */}
               <Section title="Type">
                 <div className="relative flex w-full rounded-full bg-gray-200 p-1">
                   {TYPES.map((t) => {
                     const selected = type === t;
-
                     return (
                       <button
                         key={t}
                         disabled={!canAdd}
                         onClick={() => setType(t)}
                         className="relative z-10 flex-1"
+                        type="button"
                       >
                         <motion.div
                           layout
-                          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                           className={[
-                            'flex items-center justify-center rounded-full px-3 py-2 text-sm',
-                            selected
-                              ? 'bg-white text-black shadow'
-                              : 'text-gray-700',
+                            'flex items-center justify-center rounded-full px-2 py-2 text-sm font-semibold',
+                            selected ? 'bg-white text-black shadow-sm' : 'text-gray-700',
                           ].join(' ')}
                         >
                           {t}
@@ -230,56 +257,56 @@ export function AddProblemSheet({
                 </div>
               </Section>
 
-              {/* hold color */}
-             <Section title="Hold Color">
-              {HOLD_COLORS.map((c) => {
-                const selected = holdColor === c.name;
-
-                return (
-                  <motion.button
-                    key={c.name}
-                    disabled={!canAdd}
-                    onClick={() => setHoldColor(c.name)}
-                    whileHover={canAdd ? { y: -2, scale: 1.03 } : undefined}
-                    whileTap={canAdd ? { scale: 0.96 } : undefined}
-                    className={[
-                      'flex h-12 w-14 items-center justify-center rounded-2xl transition',
-                      selected ? 'border-2 border-black' : 'border border-transparent',
-                      !canAdd ? 'opacity-90 cursor-not-allowed' : '',
-                    ].join(' ')}
-                    style={{
-                      backgroundColor: c.color,
-                      opacity: 0.8, // ✅ 60% opacity as requested
-                    }}
-                  >
-                    <span className="text-xs font-small text-black">
-                      {c.name}
-                    </span>
-                  </motion.button>
-                );
-              })}
-            </Section>
-
-
+              {/* hold colors filled swatches (space-saving) */}
+              <Section title="Hold Color">
+                <div className="flex flex-wrap gap-2">
+                  {HOLD_COLORS.map((c) => {
+                    const selected = holdColor === c.name;
+                    return (
+                      <motion.button
+                        key={c.name}
+                        type="button"
+                        disabled={!canAdd}
+                        onClick={() => setHoldColor(c.name)}
+                        whileHover={canAdd ? { y: -2, scale: 1.03 } : undefined}
+                        whileTap={canAdd ? { scale: 0.96 } : undefined}
+                        className={[
+                          'flex h-14 w-20 items-center justify-center rounded-2xl transition',
+                          selected ? 'border-2 border-black' : 'border border-transparent',
+                          !canAdd ? 'opacity-50 cursor-not-allowed' : '',
+                        ].join(' ')}
+                        style={{
+                          backgroundColor: c.color,
+                          opacity: 0.6, // requested 60% opacity
+                        }}
+                      >
+                        <span className="text-sm font-semibold text-black">{c.name}</span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </Section>
 
               {/* save */}
-              <motion.button
-                whileTap={{ scale: 0.96 }}
-                disabled={!valid}
-                className="ml-auto block rounded-full bg-black px-8 py-3 text-white disabled:opacity-40"
-                onClick={async () => {
-                  if (!image) return;
-                  await onSave({
-                    title: title.trim(),
-                    gradeId,
-                    holdColor,
-                    type,
-                    image,
-                  });
-                }}
-              >
-                Save problem
-              </motion.button>
+              <div className="flex justify-end pt-1">
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  disabled={!valid}
+                  className="rounded-full bg-black px-8 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                  onClick={async () => {
+                    if (!image) return;
+                    await onSave({
+                      title: title.trim(),
+                      gradeId,
+                      holdColor,
+                      type,
+                      image,
+                    });
+                  }}
+                >
+                  Save problem
+                </motion.button>
+              </div>
             </div>
           </motion.div>
         </>
@@ -292,19 +319,20 @@ export function AddProblemSheet({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
-      <div className="mb-2 text-sm font-medium">{title}</div>
-      <div className="flex flex-wrap gap-2">{children}</div>
+    <div className="space-y-2">
+      <div className="text-xs font-semibold tracking-wide text-gray-500 uppercase">{title}</div>
+      {children}
     </div>
   );
 }
 
+// ✅ IMPORTANT: use Framer Motion props type (fixes Vercel TS error)
 function Chip({
   selected,
   children,
   disabled,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { selected?: boolean }) {
+}: HTMLMotionProps<'button'> & { selected?: boolean }) {
   return (
     <motion.button
       whileHover={disabled ? undefined : { y: -1, scale: 1.04 }}
