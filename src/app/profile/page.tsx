@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import * as React from 'react';
 import {
   getGymsAndGrades,
   createGym,
@@ -12,6 +12,7 @@ import {
   type GymRow,
   type GymGradeRow,
 } from '@/lib/api';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const COLOR_OPTIONS = [
   'white',
@@ -23,31 +24,63 @@ const COLOR_OPTIONS = [
   'red',
   'purple',
   'pink',
-];
+] as const;
+
+function colorToHex(color: string) {
+  switch (color) {
+    case 'white':
+      return '#ffffff';
+    case 'black':
+      return '#0b0b0c';
+    case 'yellow':
+      return '#facc15';
+    case 'orange':
+      return '#fb923c';
+    case 'green':
+      return '#22c55e';
+    case 'blue':
+      return '#3b82f6';
+    case 'red':
+      return '#ef4444';
+    case 'purple':
+      return '#a78bfa';
+    case 'pink':
+      return '#f472b6';
+    default:
+      return '#94a3b8';
+  }
+}
+
+type SheetMode =
+  | { kind: 'addGym' }
+  | { kind: 'addGrade' }
+  | { kind: 'editGrade'; grade: GymGradeRow };
 
 export default function ProfilePage() {
-  const [gyms, setGyms] = useState<GymRow[]>([]);
-  const [gradesByGym, setGradesByGym] = useState<
-    Record<string, GymGradeRow[]>
-  >({});
-  const [selectedGymId, setSelectedGymId] = useState<string | null>(null);
-  const [newGymName, setNewGymName] = useState('');
-  const [newGradeName, setNewGradeName] = useState('');
-  const [newGradeColor, setNewGradeColor] = useState('orange');
-  const [loading, setLoading] = useState(true);
-  const [savingGym, setSavingGym] = useState(false);
-  const [savingGrade, setSavingGrade] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [gyms, setGyms] = React.useState<GymRow[]>([]);
+  const [gradesByGym, setGradesByGym] = React.useState<Record<string, GymGradeRow[]>>({});
+  const [selectedGymId, setSelectedGymId] = React.useState<string | null>(null);
 
-  useEffect(() => {
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const [sheet, setSheet] = React.useState<SheetMode | null>(null);
+
+  React.useEffect(() => {
     const load = async () => {
+      setLoading(true);
+      setError(null);
       try {
         const { gyms, gradesByGym } = await getGymsAndGrades();
         setGyms(gyms);
         setGradesByGym(gradesByGym);
+
         if (gyms.length > 0) {
           const home = gyms.find((g) => g.is_home);
           setSelectedGymId(home?.id ?? gyms[0].id);
+        } else {
+          setSelectedGymId(null);
         }
       } catch (err: any) {
         console.error(err);
@@ -61,462 +94,550 @@ export default function ProfilePage() {
   }, []);
 
   const selectedGym = gyms.find((g) => g.id === selectedGymId) ?? null;
-  const selectedGrades =
-    (selectedGym && gradesByGym[selectedGym.id]) || [];
-
-  const handleAddGym = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newGymName.trim()) return;
-    setSavingGym(true);
-    setError(null);
-    try {
-      const gym = await createGym(newGymName.trim());
-      setGyms((prev) => [...prev, gym]);
-      setNewGymName('');
-      if (!selectedGymId) setSelectedGymId(gym.id);
-    } catch (err: any) {
-      console.error(err);
-      setError('Gym konnte nicht angelegt werden.');
-    } finally {
-      setSavingGym(false);
-    }
-  };
+  const selectedGrades = (selectedGym && gradesByGym[selectedGym.id]) || [];
 
   const handleSetHomeGym = async (gymId: string) => {
-    setSavingGym(true);
+    setBusy(true);
     setError(null);
     try {
       await setHomeGym(gymId);
-      setGyms((prev) =>
-        prev.map((g) => ({ ...g, is_home: g.id === gymId }))
-      );
+      setGyms((prev) => prev.map((g) => ({ ...g, is_home: g.id === gymId })));
+      setSelectedGymId(gymId);
     } catch (err: any) {
       console.error(err);
       setError('Home-Gym konnte nicht gesetzt werden.');
     } finally {
-      setSavingGym(false);
+      setBusy(false);
     }
   };
 
   const handleToggleGradingMode = async () => {
     if (!selectedGym) return;
-    const nextMode =
-      selectedGym.grading_mode === 'specific' ? 'ranges' : 'specific';
+    const nextMode = selectedGym.grading_mode === 'specific' ? 'ranges' : 'specific';
+    setBusy(true);
     setError(null);
-    setSavingGym(true);
     try {
       await updateGymGradingMode(selectedGym.id, nextMode);
       setGyms((prev) =>
-        prev.map((g) =>
-          g.id === selectedGym.id
-            ? { ...g, grading_mode: nextMode }
-            : g
-        )
+        prev.map((g) => (g.id === selectedGym.id ? { ...g, grading_mode: nextMode } : g))
       );
     } catch (err: any) {
       console.error(err);
       setError('Grading-Mode konnte nicht aktualisiert werden.');
     } finally {
-      setSavingGym(false);
+      setBusy(false);
     }
   };
 
-  const handleAddGrade = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedGym) return;
-    if (!newGradeName.trim()) return;
-    setSavingGrade(true);
+  const handleCreateGym = async (name: string) => {
+    setBusy(true);
     setError(null);
     try {
-      const grade = await createGymGrade(
-        selectedGym.id,
-        newGradeName.trim(),
-        newGradeColor
-      );
+      const gym = await createGym(name.trim());
+      setGyms((prev) => [...prev, gym]);
+      setSelectedGymId(gym.id);
+      setSheet(null);
+    } catch (err: any) {
+      console.error(err);
+      setError('Gym konnte nicht angelegt werden.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCreateGrade = async (payload: { name: string; color: string }) => {
+    if (!selectedGym) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const grade = await createGymGrade(selectedGym.id, payload.name.trim(), payload.color);
       setGradesByGym((prev) => ({
         ...prev,
         [selectedGym.id]: [...(prev[selectedGym.id] ?? []), grade],
       }));
-      setNewGradeName('');
+      setSheet(null);
     } catch (err: any) {
       console.error(err);
       setError('Grad konnte nicht angelegt werden.');
     } finally {
-      setSavingGrade(false);
+      setBusy(false);
     }
   };
 
-  const handleUpdateGrade = async (grade: GymGradeRow) => {
-    setSavingGrade(true);
+  const handleUpdateGrade = async (gradeId: string, name: string, color: string) => {
+    setBusy(true);
     setError(null);
     try {
-      const updated = await updateGymGrade(
-        grade.id,
-        grade.name,
-        grade.color
-      );
+      const updated = await updateGymGrade(gradeId, name.trim(), color);
       setGradesByGym((prev) => {
-        const list = prev[grade.gym_id] ?? [];
+        const list = prev[updated.gym_id] ?? [];
         return {
           ...prev,
-          [grade.gym_id]: list.map((g) =>
-            g.id === grade.id ? updated : g
-          ),
+          [updated.gym_id]: list.map((g) => (g.id === updated.id ? updated : g)),
         };
       });
+      setSheet(null);
     } catch (err: any) {
       console.error(err);
       setError('Grad konnte nicht gespeichert werden.');
     } finally {
-      setSavingGrade(false);
+      setBusy(false);
     }
   };
 
   const handleDeleteGrade = async (grade: GymGradeRow) => {
-    setSavingGrade(true);
+    setBusy(true);
     setError(null);
     try {
       await deleteGymGrade(grade.id);
       setGradesByGym((prev) => {
         const list = prev[grade.gym_id] ?? [];
-        return {
-          ...prev,
-          [grade.gym_id]: list.filter((g) => g.id !== grade.id),
-        };
+        return { ...prev, [grade.gym_id]: list.filter((g) => g.id !== grade.id) };
       });
+      setSheet(null);
     } catch (err: any) {
       console.error(err);
       setError('Grad konnte nicht gelöscht werden.');
     } finally {
-      setSavingGrade(false);
+      setBusy(false);
     }
   };
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+      <main className="min-h-screen flex items-center justify-center bg-bg text-fg">
         <p>Profil wird geladen…</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 p-4">
-      <div className="mx-auto flex max-w-4xl flex-col gap-6 md:flex-row">
-        {/* Left: Gyms */}
-        <section className="w-full md:w-1/2 space-y-4">
-          <h1 className="text-xl font-semibold">Mein Profil</h1>
-
-          {error && (
-            <p className="text-sm text-red-400">{error}</p>
-          )}
-
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-200">
-              Meine Gyms
-            </h2>
-
-            {gyms.length === 0 && (
-              <p className="text-sm text-slate-400">
-                Du hast noch keine Gyms angelegt. Lege unten dein Home-Gym an,
-                um Grades zu definieren.
-              </p>
-            )}
-
-            <div className="space-y-2">
-            {gyms.map((gym) => (
-                <div
-                key={gym.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedGymId(gym.id)}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                    setSelectedGymId(gym.id);
-                    }
-                }}
-                className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition cursor-pointer ${
-                    selectedGymId === gym.id
-                    ? 'border-emerald-400 bg-slate-900'
-                    : 'border-slate-700 bg-slate-900/60 hover:border-emerald-300/60'
-                }`}
-                >
-                <div className="flex items-center justify-between gap-2">
-                    <div>
-                    <div className="font-medium">{gym.name}</div>
-                    <div className="mt-0.5 text-xs text-slate-400">
-                        Mode:{' '}
-                        {gym.grading_mode === 'specific'
-                        ? 'Spezifische Grades'
-                        : 'Grade-Bereiche'}
-                    </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                    {gym.is_home && (
-                        <span className="rounded-full bg-emerald-900 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                        Home-Gym
-                        </span>
-                    )}
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                        e.stopPropagation();
-                        void handleSetHomeGym(gym.id);
-                        }}
-                        disabled={savingGym}
-                        className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] text-slate-300 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-60"
-                    >
-                        Als Home
-                    </button>
-                    </div>
-                </div>
-                </div>
-            ))}
-            </div>
-
-
-            <form
-              onSubmit={handleAddGym}
-              className="mt-3 space-y-2 border-t border-slate-800 pt-3"
-            >
-              <label className="text-xs font-medium text-slate-300">
-                Neues Gym hinzufügen
-              </label>
-              <input
-                type="text"
-                value={newGymName}
-                onChange={(e) => setNewGymName(e.target.value)}
-                placeholder="z.B. Beta Boulders, Escaladrome..."
-                className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-              />
-              <button
-                type="submit"
-                disabled={savingGym || !newGymName.trim()}
-                className="w-full rounded-xl border border-emerald-500/80 bg-emerald-950/60 px-3 py-2 text-sm font-medium hover:bg-emerald-900 disabled:opacity-60"
-              >
-                {savingGym ? 'Wird angelegt…' : 'Gym speichern'}
-              </button>
-            </form>
+    <main className="min-h-screen app-pattern text-fg p-4">
+      <div className="mx-auto w-full max-w-sm px-3 pb-24 space-y-6">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">Profil</h1>
+            <p className="mt-1 text-sm text-fg0">Home Gym & Grades für Claimb</p>
           </div>
-        </section>
 
-        {/* Right: Grades for selected gym */}
-        <section className="w-full md:w-1/2 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-200">
-            Grades im Home-Gym
-          </h2>
+          <button
+            type="button"
+            onClick={() => setSheet({ kind: 'addGym' })}
+            className="shrink-0 rounded-full bg-white px-3 py-3 text-sm font-semibold hover:bg-slate-50"
+            aria-label="Gym hinzufügen"
+            title="Gym hinzufügen"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 8H0V6H6V0H8V6H14V8H8V14H6V8Z" fill="black"/>
+            </svg>
+          </button>
+        </div>
 
-          {!selectedGym && (
-            <p className="text-sm text-slate-400">
-              Wähle links ein Gym aus oder lege eines an, um Grades zu
-              definieren.
-            </p>
+        {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
+
+        {/* Gyms */}
+        <section className="rounded-2xl bg-white/80 p-4 shadow-sm backdrop-blur space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold tracking-wide text-fg/60 uppercase">Gyms</div>
+              <div className="text-sm font-semibold">Wähle dein Home Gym</div>
+            </div>
+            <span className="rounded-full bg-black/5 px-3 py-1 text-xs font-semibold">
+              {gyms.length} {gyms.length === 1 ? 'Gym' : 'Gyms'}
+            </span>
+          </div>
+
+          {gyms.length === 0 ? (
+            <div className="rounded-2xl border border-border bg-white/70 p-4 text-sm text-fg0">
+              Du hast noch keine Gyms angelegt. Erstelle zuerst dein Home-Gym.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {gyms.map((g) => {
+                const active = g.id === selectedGymId;
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setSelectedGymId(g.id)}
+                    className={[
+                      'ui-transition rounded-full border px-3 py-2 text-sm font-semibold',
+                      active ? 'border-emerald-500 bg-emerald-50 text-slate-900' : 'border-border bg-white text-slate-900 hover:bg-slate-50',
+                    ].join(' ')}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      {g.name}
+                      {g.is_home && (
+                        <span className="rounded-full bg-emerald-900 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                          Home
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
 
           {selectedGym && (
-            <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold">
-                    {selectedGym.name}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    Home-Gym:{' '}
-                    {selectedGym.is_home ? 'Ja' : 'Noch nicht gesetzt'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleToggleGradingMode}
-                  disabled={savingGym}
-                  className="rounded-full border border-slate-600 px-3 py-1 text-[11px] text-slate-300 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-60"
-                >
-                  Mode:{' '}
-                  {selectedGym.grading_mode === 'specific'
-                    ? 'Spezifische Grades'
-                    : 'Grade-Bereiche'}{' '}
-                  (Toggle)
-                </button>
-              </div>
+            <div className="flex items-center justify-between pt-2 border-t border-black/10">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleSetHomeGym(selectedGym.id)}
+                className="rounded-full border border-border bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50 disabled:opacity-60"
+              >
+                Als Home setzen
+              </button>
 
-              <div className="space-y-2 border-t border-slate-800 pt-3">
-                <p className="text-xs text-slate-400">
-                  Definiere hier deine Farben/Grades. Jede Zeile kann z.B.
-                  &quot;Orange&quot;, &quot;V3&quot; oder &quot;6a&quot; sein.
-                </p>
-
-                {selectedGrades.length === 0 && (
-                  <p className="text-sm text-slate-500">
-                    Noch keine Grades angelegt.
-                  </p>
-                )}
-
-                <div className="space-y-2">
-                  {selectedGrades.map((grade) => (
-                    <GradeRow
-                      key={grade.id}
-                      grade={grade}
-                      onSave={handleUpdateGrade}
-                      onDelete={handleDeleteGrade}
-                    />
-                  ))}
-                </div>
-
-                {/* Add new grade */}
-                <form
-                  onSubmit={handleAddGrade}
-                  className="mt-3 space-y-2 rounded-xl border border-dashed border-slate-700 p-3"
-                >
-                  <label className="text-xs font-medium text-slate-300">
-                    Neuen Grad hinzufügen
-                  </label>
-                  <input
-                    type="text"
-                    value={newGradeName}
-                    onChange={(e) => setNewGradeName(e.target.value)}
-                    placeholder="z.B. Orange, V3, 6a..."
-                    className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                  />
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">
-                      Farbe:
-                    </span>
-                    <select
-                      value={newGradeColor}
-                      onChange={(e) => setNewGradeColor(e.target.value)}
-                      className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-xs text-slate-50 focus:outline-none focus:ring-1 focus:ring-emerald-500/60"
+              {/* Mode toggle as compact segmented */}
+              <div className="rounded-full bg-black/5 p-1 flex">
+                {(['specific', 'ranges'] as const).map((m) => {
+                  const active = selectedGym.grading_mode === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        if (!active) void handleToggleGradingMode();
+                      }}
+                      className={[
+                        'rounded-full px-3 py-1 text-[11px] font-semibold ui-transition',
+                        active ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900',
+                      ].join(' ')}
                     >
-                      {COLOR_OPTIONS.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={savingGrade || !newGradeName.trim()}
-                    className="w-full rounded-xl border border-emerald-500/80 bg-emerald-950/60 px-3 py-2 text-sm font-medium hover:bg-emerald-900 disabled:opacity-60"
-                  >
-                    {savingGrade ? 'Wird gespeichert…' : 'Grad speichern'}
-                  </button>
-                </form>
+                      {m === 'specific' ? 'Specific' : 'Ranges'}
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+          )}
+        </section>
+
+        {/* Grades */}
+        <section className="rounded-2xl bg-white/80 p-4 shadow-sm backdrop-blur space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold tracking-wide text-fg/60 uppercase">Grades</div>
+              <div className="text-sm font-semibold">
+                {selectedGym ? selectedGym.name : 'Kein Gym ausgewählt'}
+              </div>
+              <div className="text-xs text-fg0">
+                Tippe einen Grad zum Bearbeiten. „+“ zum Hinzufügen.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={!selectedGym}
+              onClick={() => setSheet({ kind: 'addGrade' })}
+              className="rounded-full bg-white px-3 py-3 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              aria-label="Grad hinzufügen"
+              title="Grad hinzufügen"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 8H0V6H6V0H8V6H14V8H8V14H6V8Z" fill="black"/>
+              </svg>
+            </button>
+          </div>
+
+          {!selectedGym ? (
+            <div className="rounded-2xl border border-border bg-white/70 p-4 text-sm text-fg0">
+              Wähle zuerst ein Gym aus.
+            </div>
+          ) : selectedGrades.length === 0 ? (
+            <div className="rounded-2xl border border-border bg-white/70 p-4 text-sm text-fg0">
+              Noch keine Grades. Lege deine Farben/Level an.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {selectedGrades.map((g) => (
+                <GradeSwatch
+                  key={g.id}
+                  name={g.name}
+                  color={colorToHex(g.color)}
+                  onClick={() => setSheet({ kind: 'editGrade', grade: g })}
+                />
+              ))}
             </div>
           )}
         </section>
       </div>
+
+      {/* Bottom sheets */}
+      <AddGymSheet
+        open={sheet?.kind === 'addGym'}
+        busy={busy}
+        onClose={() => setSheet(null)}
+        onCreate={handleCreateGym}
+      />
+
+      <AddEditGradeSheet
+        open={sheet?.kind === 'addGrade' || sheet?.kind === 'editGrade'}
+        busy={busy}
+        mode={sheet?.kind === 'editGrade' ? 'edit' : 'add'}
+        grade={sheet?.kind === 'editGrade' ? sheet.grade : null}
+        onClose={() => setSheet(null)}
+        onCreate={handleCreateGrade}
+        onUpdate={handleUpdateGrade}
+        onDelete={handleDeleteGrade}
+        disabled={!selectedGym}
+      />
     </main>
   );
 }
 
-type GradeRowProps = {
-  grade: GymGradeRow;
-  onSave: (grade: GymGradeRow) => void;
-  onDelete: (grade: GymGradeRow) => void;
-};
+/* ---------------- UI Components ---------------- */
 
-function GradeRow({ grade, onSave, onDelete }: GradeRowProps) {
-  const [localName, setLocalName] = useState(grade.name);
-  const [localColor, setLocalColor] = useState(grade.color);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const handleSaveClick = async () => {
-    setSaving(true);
-    try {
-      await onSave({
-        ...grade,
-        name: localName,
-        color: localColor,
-      });
-      setDirty(false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteClick = async () => {
-    setDeleting(true);
-    try {
-      await onDelete(grade);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
+function GradeSwatch({
+  name,
+  color,
+  onClick,
+}: {
+  name: string;
+  color: string;
+  onClick: () => void;
+}) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2">
-      <div
-        className={`h-4 w-4 rounded-full border border-slate-600 ${
-          colorToBgClass(localColor)
-        }`}
-      />
-      <input
-        type="text"
-        value={localName}
-        onChange={(e) => {
-          setLocalName(e.target.value);
-          setDirty(true);
-        }}
-        className="flex-1 bg-transparent text-sm text-slate-50 focus:outline-none"
-      />
-      <select
-        value={localColor}
-        onChange={(e) => {
-          setLocalColor(e.target.value);
-          setDirty(true);
-        }}
-        className="rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-[11px] text-slate-50 focus:outline-none focus:ring-1 focus:ring-emerald-500/60"
-      >
-        {COLOR_OPTIONS.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-      </select>
-      <button
-        type="button"
-        onClick={handleSaveClick}
-        disabled={!dirty || saving}
-        className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] text-slate-200 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40"
-      >
-        {saving ? '...' : 'Save'}
-      </button>
-      <button
-        type="button"
-        onClick={handleDeleteClick}
-        disabled={deleting}
-        className="text-xs text-slate-500 hover:text-red-400 disabled:opacity-50"
-      >
-        {deleting ? '…' : '🗑️'}
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="ui-transition flex h-20 w-16 flex-col items-center justify-center gap-2 rounded-2xl bg-white border border-border hover:bg-slate-50 active:scale-[0.98]"
+    >
+      <span className="h-6 w-6 rounded-full" style={{ backgroundColor: color }} />
+      <span className="text-sm font-medium text-slate-900">{name}</span>
+    </button>
   );
 }
 
-function colorToBgClass(color: string): string {
-  switch (color) {
-    case 'white':
-      return 'bg-slate-100';
-    case 'black':
-      return 'bg-slate-900';
-    case 'yellow':
-      return 'bg-yellow-400';
-    case 'orange':
-      return 'bg-orange-500';
-    case 'green':
-      return 'bg-green-500';
-    case 'blue':
-      return 'bg-blue-500';
-    case 'red':
-      return 'bg-red-500';
-    case 'purple':
-      return 'bg-purple-500';
-    case 'pink':
-      return 'bg-pink-400';
-    default:
-      return 'bg-slate-500';
-  }
+/* ---------- Sheet base ---------- */
+
+function Sheet({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  React.useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            aria-label="Close"
+          />
+          <motion.div
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl bg-white text-slate-900"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 320 }}
+            drag="y"
+            dragConstraints={{ top: 0 }}
+            dragElastic={0.18}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 120) onClose();
+            }}
+          >
+            <div className="flex justify-center pt-3">
+              <div className="h-1.5 w-12 rounded-full bg-black/20" />
+            </div>
+            {children}
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ---------- Add Gym Sheet ---------- */
+
+function AddGymSheet({
+  open,
+  onClose,
+  onCreate,
+  busy,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (name: string) => void;
+  busy: boolean;
+}) {
+  const [name, setName] = React.useState('');
+
+  React.useEffect(() => {
+    if (open) setName('');
+  }, [open]);
+
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <div className="px-5 pb-7 pt-4 space-y-4">
+        <div className="text-center">
+          <div className="text-lg font-semibold">Neues Gym</div>
+          <div className="text-sm text-slate-500">Füge dein Gym hinzu</div>
+        </div>
+
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="z.B. Beta Boulders, Escaladrome…"
+          className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+        />
+
+        <div className="flex justify-end">
+          <button
+            type="button"
+            disabled={busy || !name.trim()}
+            onClick={() => onCreate(name)}
+            className="rounded-full bg-black px-6 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? 'Speichern…' : 'Gym speichern'}
+          </button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+/* ---------- Add/Edit Grade Sheet ---------- */
+
+function AddEditGradeSheet({
+  open,
+  onClose,
+  busy,
+  mode,
+  grade,
+  onCreate,
+  onUpdate,
+  onDelete,
+  disabled,
+}: {
+  open: boolean;
+  onClose: () => void;
+  busy: boolean;
+  mode: 'add' | 'edit';
+  grade: GymGradeRow | null;
+  onCreate: (payload: { name: string; color: string }) => void;
+  onUpdate: (gradeId: string, name: string, color: string) => void;
+  onDelete: (grade: GymGradeRow) => void;
+  disabled: boolean;
+}) {
+  const [name, setName] = React.useState('');
+  const [color, setColor] = React.useState<(typeof COLOR_OPTIONS)[number]>('orange');
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (mode === 'edit' && grade) {
+      setName(grade.name);
+      setColor((grade.color as any) ?? 'orange');
+    } else {
+      setName('');
+      setColor('orange');
+    }
+  }, [open, mode, grade]);
+
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <div className="px-5 pb-7 pt-4 space-y-4">
+        <div className="text-center">
+          <div className="text-lg font-semibold">
+            {mode === 'edit' ? 'Grad bearbeiten' : 'Neuer Grad'}
+          </div>
+          <div className="text-sm text-slate-500">
+            {mode === 'edit' ? 'Name & Farbe anpassen' : 'Definiere einen neuen Grad'}
+          </div>
+        </div>
+
+        {disabled && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Wähle zuerst ein Gym aus.
+          </div>
+        )}
+
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder='z.B. "Orange", "V3", "6a"'
+          disabled={disabled}
+          className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/60 disabled:opacity-50"
+        />
+
+        {/* Color swatches */}
+        <div className="space-y-2">
+          <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Farbe</div>
+          <div className="flex flex-wrap gap-2">
+            {COLOR_OPTIONS.map((c) => {
+              const active = color === c;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setColor(c)}
+                  className={[
+                    'ui-transition h-12 w-12 rounded-2xl border',
+                    active ? 'border-black' : 'border-border',
+                    disabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98]',
+                  ].join(' ')}
+                  style={{ backgroundColor: colorToHex(c) }}
+                  aria-label={c}
+                  title={c}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          {mode === 'edit' && grade ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDelete(grade)}
+              className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-800 disabled:opacity-50"
+            >
+              Löschen
+            </button>
+          ) : (
+            <div />
+          )}
+
+          <button
+            type="button"
+            disabled={busy || disabled || !name.trim()}
+            onClick={() => {
+              if (mode === 'edit' && grade) {
+                onUpdate(grade.id, name, color);
+              } else {
+                onCreate({ name, color });
+              }
+            }}
+            className="rounded-full bg-black px-6 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? 'Speichern…' : 'Speichern'}
+          </button>
+        </div>
+      </div>
+    </Sheet>
+  );
 }

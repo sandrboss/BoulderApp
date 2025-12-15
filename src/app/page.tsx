@@ -25,7 +25,7 @@ import { ProblemCard } from '@/components/problem/ProblemCard';
 import { uploadProblemPhoto } from '@/lib/storage';
 import { ProblemStack } from '@/components/problem/ProblemStack';
 import { AttemptPanel } from '@/components/problem/AttemptPanel';
-import { AddProblemModal } from '@/components/problem/AddProblemModal';
+import { AddProblemSheet } from '@/components/problem/AddProblemSheet';
 
 
 
@@ -520,16 +520,27 @@ const typeLabelFor = (_p: ProblemRow) => {
 
          </div>
 
-<AddProblemModal
+<AddProblemSheet
   open={addOpen}
   onClose={() => setAddOpen(false)}
-  homeGym={homeGym}
+  gymName={homeGym?.name}
   homeGrades={homeGrades}
   initialGradeId={selectedGradeId}
-  submitting={adding}
-  error={error}
-  onSubmit={handleAddProblem}
+  onSave={async ({ title, gradeId, holdColor, type, image }) => {
+    // ✅ type is fake: ignore for backend
+    const photoUrl = await uploadProblemPhoto(image);
+    const created = await createProblem(
+      homeGym!.id,
+      gradeId,
+      title,
+      photoUrl,
+      holdColor.toLowerCase()
+    );
+    setProblems((prev) => [...prev, created]);
+    setAddOpen(false);
+  }}
 />
+
 
 
     </div>
