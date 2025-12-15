@@ -63,12 +63,12 @@ export function ProblemStack({
   }, [problems.length, activeIndex, setActiveIndex]);
 
   // --- Animation config ---
-  const ANIM_MS = 200;
-  const SHIFT_PX = 70;
+  const ANIM_MS = 270;
+  const SHIFT_PX = 80;
 
   // Peeking polish
   const PEEK_SHIFT_PX = 14;
-  const PEEK_SCALE_BOOST = 0.02;
+  const PEEK_SCALE_BOOST = 0.04;
 
   const [anim, setAnim] = React.useState<AnimState>(null);
   const animTimerRef = React.useRef<number | null>(null);
@@ -235,6 +235,7 @@ export function ProblemStack({
   const dir = anim?.dir ?? 1;
   const step = anim?.step ?? 0;
 
+
   // For the indicator highlight: feel responsive during animation
   const indicatorIndex = anim ? anim.toIndex : activeIndex;
 
@@ -246,7 +247,9 @@ export function ProblemStack({
 
   const outY = step === 1 ? (dir === 1 ? -SHIFT_PX : SHIFT_PX) : 0;
   const inStartY = dir === 1 ? SHIFT_PX : -SHIFT_PX;
-  const inY = step === 1 ? 0 : inStartY;
+  const inY = isAnimating ? 3 : 3;
+  const inScale = isAnimating ? 0.97 : 1;
+
 
   const outOpacity = step === 1 ? 0 : 1;
   const inOpacity = step === 1 ? 1 : 0;
@@ -346,65 +349,60 @@ export function ProblemStack({
             })}
 
           {/* Top cards */}
-          {!isAnimating ? (
-            <div className="absolute inset-0" style={{ zIndex: 20 }}>
-              <ProblemCard
-                problem={problems[activeIndex]}
-                gradeLabel={gradeLabelFor(problems[activeIndex])}
-                gradeColor={gradeColorFor(problems[activeIndex])}
-                typeLabel={typeLabelFor?.(problems[activeIndex]) ?? 'overhang'}
-                isActive={true}
-                deleteOpacity={1}
-                stats={getCardStats(problems[activeIndex])}
-                onDelete={onDelete ? () => onDelete(problems[activeIndex].id) : undefined}
-              />
-            </div>
-          ) : (
-            <>
-              {/* Outgoing */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  transition,
-                  transform: `translateY(${outY}px) scale(1)`,
-                  opacity: outOpacity,
-                  zIndex: 21,
-                }}
-              >
-                <ProblemCard
-                  problem={outgoing}
-                  gradeLabel={gradeLabelFor(outgoing)}
-                  gradeColor={gradeColorFor(outgoing)}
-                  typeLabel={typeLabelFor?.(outgoing) ?? 'overhang'}
-                  isActive={true}
-                  deleteOpacity={1}
-                  stats={getCardStats(outgoing)}
-                  onDelete={onDelete ? () => onDelete(outgoing.id) : undefined}
-                />
-              </div>
+          {/* --- Top cards (iOS-safe: top card stays mounted, delete fades) --- */}
+{isAnimating && (
+  <div
+    className="absolute inset-0"
+    style={{
+      transition,
+      transform: `translateY(${outY}px) scale(1)`,
+      opacity: outOpacity,
+      zIndex: 22,
+      willChange: 'transform, opacity',
+    }}
+  >
+    <ProblemCard
+      problem={outgoing}
+      gradeLabel={gradeLabelFor(outgoing)}
+      gradeColor={gradeColorFor(outgoing)}
+      typeLabel={typeLabelFor?.(outgoing) ?? 'overhang'}
+      isActive={true}
+      stats={getCardStats(outgoing)}
+      onDelete={onDelete ? () => onDelete(outgoing.id) : undefined}
+      deleteOpacity={outOpacity}
+    />
+  </div>
+)}
 
-              {/* Incoming */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  transition,
-                  transform: `translateY(${inY}px) scale(1)`,
-                  opacity: inOpacity,
-                  zIndex: 22,
-                  pointerEvents: 'none',
-                }}
-              >
-                <ProblemCard
-                  problem={incoming}
-                  gradeLabel={gradeLabelFor(incoming)}
-                  gradeColor={gradeColorFor(incoming)}
-                  typeLabel={typeLabelFor?.(incoming) ?? 'overhang'}
-                  isActive={true}
-                  stats={getCardStats(incoming)}
-                />
-              </div>
-            </>
-          )}
+<div
+  className="absolute inset-0"
+  style={{
+    transition: isAnimating ? transition : undefined,
+   // transform: isAnimating ? `translateY(${inY}px) scale(1)` : 'translateY(0px) scale(1)', old one
+    transform: `translateY(${inY}px) scale(${inScale})`,
+    opacity: 1, // 👈 no fade on incoming
+    zIndex: 21, // 👈 incoming BELOW
+    willChange: isAnimating ? 'transform, opacity' : undefined,
+  }}
+>
+  <ProblemCard
+    problem={isAnimating ? incoming : problems[activeIndex]}
+    gradeLabel={gradeLabelFor(isAnimating ? incoming : problems[activeIndex])}
+    gradeColor={gradeColorFor(isAnimating ? incoming : problems[activeIndex])}
+    typeLabel={
+      typeLabelFor?.(isAnimating ? incoming : problems[activeIndex]) ?? 'overhang'
+    }
+    isActive={true}
+    stats={getCardStats(isAnimating ? incoming : problems[activeIndex])}
+    onDelete={
+      onDelete
+        ? () => onDelete((isAnimating ? incoming : problems[activeIndex]).id)
+        : undefined
+    }
+    deleteOpacity={isAnimating ? inOpacity : 1}
+  />
+</div>
+
         </div>
 
         <div className="sr-only">Active: {activeIndex + 1}</div>
