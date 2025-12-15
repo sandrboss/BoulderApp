@@ -620,15 +620,15 @@ const typeLabelFor = (_p: ProblemRow) => {
   if (!session) return null;
 
   return (
-    <main className="min-h-screen app-pattern text-fg p-4">
-      <div className="max-w-sm mx-auto px-3 space-y-5 pb-20">
-
-
+    <main className="min-h-screen app-pattern text-fg p-3 flex">
+    {/* This wrapper centers the content vertically on tall screens */}
+    <div className="w-full max-w-sm mx-auto px-3 pb-20 flex flex-col justify-center pt-8 min-h-[calc(100dvh-4rem)]">
+    {/* Inner block keeps your original spacing */}
+      <div className="space-y-3">
         <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl center font-semibold">My Current Projects</h1>
         </div>
-
         <button
           type="button"
           onClick={() => setAddOpen(true)}
@@ -641,9 +641,6 @@ const typeLabelFor = (_p: ProblemRow) => {
           </svg>
         </button>
       </div>
-
-
-
 
 
 
@@ -665,12 +662,7 @@ const typeLabelFor = (_p: ProblemRow) => {
   />
 )}
 
-
-
-
-
-       
-      </div>
+         </div>
 
       {addOpen && (
         <div className="fixed inset-0 z-50">
@@ -703,7 +695,7 @@ const typeLabelFor = (_p: ProblemRow) => {
         </div>
       )}
 
-
+    </div>
     </main>
     
   );

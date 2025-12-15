@@ -3,6 +3,7 @@
 import * as React from 'react';
 import type { ProblemRow, ProblemStats } from '@/lib/api';
 import { ProblemCard } from '@/components/problem/ProblemCard';
+import { boulderColorToStyle } from '@/lib/uiStyles';
 
 type Props = {
   problems: ProblemRow[];
@@ -30,10 +31,19 @@ function normalizeWheel(e: WheelEvent) {
   if (e.deltaMode === 1) dy *= LINE_HEIGHT;
   if (e.deltaMode === 2) dy *= PAGE_HEIGHT;
 
-  // clamp spikes from some devices
+  // clamp spikes
   dy = clamp(dy, -180, 180);
   return dy;
 }
+
+type AnimState =
+  | null
+  | {
+      fromIndex: number;
+      toIndex: number;
+      dir: 1 | -1;
+      step: 0 | 1; // 0 = initial (no transition), 1 = transitioned
+    };
 
 export function ProblemStack({
   problems,
@@ -52,42 +62,92 @@ export function ProblemStack({
     }
   }, [problems.length, activeIndex, setActiveIndex]);
 
-  const go = React.useCallback(
-    (dir: 1 | -1) => {
-      if (problems.length === 0) return;
-      setActiveIndex((prev) => (prev + dir + problems.length) % problems.length);
-    },
-    [problems.length, setActiveIndex]
-  );
+  // --- Animation config ---
+  const ANIM_MS = 200;
+  const SHIFT_PX = 70;
 
-  // ----- Improved input handling (wheel + pointer drag) -----
-  const viewportRef = React.useRef<HTMLDivElement | null>(null);
+  // Peeking polish
+  const PEEK_SHIFT_PX = 14;
+  const PEEK_SCALE_BOOST = 0.02;
 
-  // Wheel smoothing: accumulate small deltas, threshold, and cooldown to avoid “machine-gun scrolling”
+  const [anim, setAnim] = React.useState<AnimState>(null);
+  const animTimerRef = React.useRef<number | null>(null);
+
+  // Wheel smoothing + cooldown
   const wheelAccRef = React.useRef(0);
   const wheelCooldownUntilRef = React.useRef(0);
 
-  // Pointer drag (touch + mouse): use pointer events + touch-action none for consistent behavior
-  const pointerRef = React.useRef<{
-    active: boolean;
-    startY: number;
-    lastY: number;
-    hasMoved: boolean;
-  } | null>(null);
+  // Pointer drag (touch + mouse)
+  const pointerRef = React.useRef<{ active: boolean; startY: number } | null>(
+    null
+  );
 
+  const viewportRef = React.useRef<HTMLDivElement | null>(null);
+
+  const computeNextIndex = React.useCallback(
+    (index: number, dir: 1 | -1) => {
+      if (problems.length === 0) return 0;
+      return (index + dir + problems.length) % problems.length;
+    },
+    [problems.length]
+  );
+
+  const clearAnimTimer = React.useCallback(() => {
+    if (animTimerRef.current != null) {
+      window.clearTimeout(animTimerRef.current);
+      animTimerRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    return () => clearAnimTimer();
+  }, [clearAnimTimer]);
+
+  const triggerNav = React.useCallback(
+    (dir: 1 | -1) => {
+      if (problems.length <= 1) return;
+      if (anim) return;
+
+      const next = computeNextIndex(activeIndex, dir);
+
+      clearAnimTimer();
+
+      // Step 0: render initial positions (no transition)
+      setAnim({ fromIndex: activeIndex, toIndex: next, dir, step: 0 });
+
+      animTimerRef.current = window.setTimeout(() => {
+        setActiveIndex(next);
+        setAnim(null);
+        animTimerRef.current = null;
+      }, ANIM_MS);
+    },
+    [ANIM_MS, activeIndex, anim, clearAnimTimer, computeNextIndex, problems.length, setActiveIndex]
+  );
+
+  // Guarantee the transition by flipping to step=1 on the next frame
+  React.useLayoutEffect(() => {
+    if (!anim) return;
+    if (anim.step !== 0) return;
+
+    const id = requestAnimationFrame(() => {
+      setAnim((prev) => (prev ? { ...prev, step: 1 } : prev));
+    });
+
+    return () => cancelAnimationFrame(id);
+  }, [anim]);
+
+  // Attach wheel + pointer handlers
   React.useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
 
-    // --- wheel ---
-    const WHEEL_THRESHOLD = 70; // higher = less sensitive
-    const WHEEL_SENSITIVITY = 0.9; // lower = softer
-    const COOLDOWN_MS = 180; // prevents multiple flips per gesture
+    const WHEEL_THRESHOLD = 70;
+    const WHEEL_SENSITIVITY = 0.9;
+    const COOLDOWN_MS = 180;
 
     const onWheel = (e: WheelEvent) => {
       if (problems.length <= 1) return;
 
-      // IMPORTANT: stops the page from scrolling
       e.preventDefault();
 
       const now = performance.now();
@@ -100,44 +160,26 @@ export function ProblemStack({
         const dir: 1 | -1 = wheelAccRef.current > 0 ? 1 : -1;
         wheelAccRef.current = 0;
         wheelCooldownUntilRef.current = now + COOLDOWN_MS;
-        go(dir);
+        triggerNav(dir);
       }
     };
 
-    // --- pointer drag ---
-    const DRAG_THRESHOLD_PX = 44; // swipe threshold
+    const DRAG_THRESHOLD_PX = 44;
 
     const onPointerDown = (e: PointerEvent) => {
       if (problems.length <= 1) return;
-
-      // only primary button
       if (e.pointerType === 'mouse' && e.button !== 0) return;
 
-      pointerRef.current = {
-        active: true,
-        startY: e.clientY,
-        lastY: e.clientY,
-        hasMoved: false,
-      };
-
-      // capture so we keep receiving events even if pointer leaves element
+      pointerRef.current = { active: true, startY: e.clientY };
       try {
         (e.target as Element)?.setPointerCapture?.(e.pointerId);
       } catch {}
 
-      // prevent focus/selection quirks
       e.preventDefault();
     };
 
     const onPointerMove = (e: PointerEvent) => {
-      const st = pointerRef.current;
-      if (!st?.active) return;
-
-      const dy = e.clientY - st.startY;
-      st.lastY = e.clientY;
-      if (Math.abs(dy) > 6) st.hasMoved = true;
-
-      // Prevent page from scrolling while dragging on touch devices
+      if (!pointerRef.current?.active) return;
       e.preventDefault();
     };
 
@@ -146,10 +188,8 @@ export function ProblemStack({
       if (!st?.active) return;
 
       const dy = e.clientY - st.startY;
-
-      // If it was a real drag/swipe, change card
       if (Math.abs(dy) >= DRAG_THRESHOLD_PX) {
-        go(dy < 0 ? 1 : -1); // swipe up -> next
+        triggerNav(dy < 0 ? 1 : -1); // swipe up => next
       }
 
       pointerRef.current = null;
@@ -173,7 +213,7 @@ export function ProblemStack({
       el.removeEventListener('pointerup', onPointerUp as any);
       el.removeEventListener('pointercancel', onPointerCancel as any);
     };
-  }, [go, problems.length]);
+  }, [problems.length, triggerNav]);
 
   if (problems.length === 0) {
     return (
@@ -183,65 +223,192 @@ export function ProblemStack({
     );
   }
 
-  // Show current + next 2 peeking behind
+  const getCardStats = (p: ProblemRow) => {
+    const s = statsByProblem[p.id];
+    return {
+      attempts: s?.attempts ?? 0,
+      bestReach: s?.lastOutcome ?? null,
+    };
+  };
+
+  const isAnimating = !!anim;
+  const dir = anim?.dir ?? 1;
+  const step = anim?.step ?? 0;
+
+  // For the indicator highlight: feel responsive during animation
+  const indicatorIndex = anim ? anim.toIndex : activeIndex;
+
+  // Peek stack uses the outgoing (fromIndex) while animating
+  const topIndexForPeeks = isAnimating ? anim!.fromIndex : activeIndex;
+
   const visibleCount = Math.min(3, problems.length);
-  const visible = Array.from({ length: visibleCount }, (_, k) => problems[(activeIndex + k) % problems.length]);
+  const peek = Array.from({ length: visibleCount }, (_, k) => problems[(topIndexForPeeks + k) % problems.length]);
+
+  const outY = step === 1 ? (dir === 1 ? -SHIFT_PX : SHIFT_PX) : 0;
+  const inStartY = dir === 1 ? SHIFT_PX : -SHIFT_PX;
+  const inY = step === 1 ? 0 : inStartY;
+
+  const outOpacity = step === 1 ? 0 : 1;
+  const inOpacity = step === 1 ? 1 : 0;
+
+  const peekShift = step === 1 ? (dir === 1 ? -PEEK_SHIFT_PX : PEEK_SHIFT_PX) : 0;
+  const peekScaleBoost = step === 1 ? PEEK_SCALE_BOOST : 0;
+
+  const transition = `transform ${ANIM_MS}ms ease, opacity ${ANIM_MS}ms ease`;
+
+  const outgoing = problems[anim?.fromIndex ?? activeIndex];
+  const incoming = problems[anim?.toIndex ?? activeIndex];
 
   return (
-    <div
-      ref={viewportRef}
-      className="relative mx-auto w-full max-w-[340px] select-none"
-      style={{
-        // Prevent scroll chaining + keep gestures inside
-        overscrollBehavior: 'contain',
-        WebkitOverflowScrolling: 'auto',
-        // Makes pointer/touch drag predictable; we handle vertical gestures ourselves
-        touchAction: 'none',
-      }}
-      aria-label="Problem Stack"
-    >
-      <div className="relative h-[520px]">
-        {visible
-          .slice()
-          .reverse()
-          .map((p, idxFromBack) => {
-            const depth = visibleCount - 1 - idxFromBack;
-            const topOffset = depth * 32;
-            const scale = 1 - depth * 0.12;
-            const opacity = 1 - depth * 0.2;
+    <>
+      {/* Sticky / fixed right-side indicator */}
+      <div
+        className="fixed right-1 top-1/2 -translate-y-1/2 z-[60] flex flex-col items-end gap-1"
+        style={{ pointerEvents: 'none' }} // purely visual
+        aria-hidden="true"
+      >
+        {problems.map((p, i) => {
+          const isActive = i === indicatorIndex;
 
-            const s = statsByProblem[p.id];
+          // Use your existing color styling helper.
+          // It returns style props used on your cards; we can reuse it here.
+          const colorStyle = boulderColorToStyle(p.boulder_color) as React.CSSProperties;
 
-            const cardStats = {
-              attempts: s?.attempts ?? 0,
-              bestReach: s?.lastOutcome ?? null,
-            };
+          return (
+            <div
+              key={`dot-${p.id}`}
+              className={[
+                'transition-all duration-200',
+                isActive ? 'shadow-sm' : 'opacity-90',
+              ].join(' ')}
+              style={{
+                width: isActive ? 8 : 4,
+                height: isActive ? 11 : 11,
+                borderTopLeftRadius: 3,
+                borderBottomLeftRadius: 3,
+                borderTopRightRadius: 3,
+                borderBottomRightRadius: 3,
+                backgroundColor:
+                  (colorStyle as any)?.backgroundColor ??
+                  (colorStyle as any)?.color ??
+                  '#999',
+              }}
+            />
+          );
+        })}
+      </div>
 
-            return (
+      {/* Stack */}
+      <div
+        ref={viewportRef}
+        className="relative mx-auto w-full max-w-[340px] select-none"
+        style={{
+          overscrollBehavior: 'contain',
+          touchAction: 'none',
+        }}
+        aria-label="Problem Stack"
+      >
+        <div className="relative h-[520px]">
+          {/* Peek cards behind (animated shift) */}
+          {peek
+            .slice(1)
+            .slice()
+            .reverse()
+            .map((p, idxFromBack) => {
+              const depth = (visibleCount - 1) - idxFromBack; // 1..2
+              const baseTopOffset = depth * 32;
+              const topOffset = baseTopOffset + peekShift;
+              const baseScale = 1 - depth * 0.12;
+              const scale = baseScale + peekScaleBoost;
+              const opacity = 1 - depth * 0.2;
+
+              return (
+                <div
+                  key={`peek-${p.id}`}
+                  style={{
+                    transition: isAnimating ? transition : undefined,
+                    transform: `translateY(${topOffset}px) scale(${scale})`,
+                    opacity,
+                    zIndex: 10 - depth,
+                  }}
+                  className="absolute inset-0"
+                >
+                  <ProblemCard
+                    problem={p}
+                    gradeLabel={gradeLabelFor(p)}
+                    gradeColor={gradeColorFor(p)}
+                    typeLabel={typeLabelFor?.(p) ?? 'overhang'}
+                    isActive={false}
+                    stats={getCardStats(p)}
+                  />
+                </div>
+              );
+            })}
+
+          {/* Top cards */}
+          {!isAnimating ? (
+            <div className="absolute inset-0" style={{ zIndex: 20 }}>
+              <ProblemCard
+                problem={problems[activeIndex]}
+                gradeLabel={gradeLabelFor(problems[activeIndex])}
+                gradeColor={gradeColorFor(problems[activeIndex])}
+                typeLabel={typeLabelFor?.(problems[activeIndex]) ?? 'overhang'}
+                isActive={true}
+                deleteOpacity={1}
+                stats={getCardStats(problems[activeIndex])}
+                onDelete={onDelete ? () => onDelete(problems[activeIndex].id) : undefined}
+              />
+            </div>
+          ) : (
+            <>
+              {/* Outgoing */}
               <div
-                key={p.id}
-                className="absolute inset-0 ui-transition"
+                className="absolute inset-0"
                 style={{
-                  transform: `translateY(${topOffset}px) scale(${scale})`,
-                  opacity,
-                  zIndex: 10 - depth,
+                  transition,
+                  transform: `translateY(${outY}px) scale(1)`,
+                  opacity: outOpacity,
+                  zIndex: 21,
                 }}
               >
                 <ProblemCard
-                  problem={p}
-                  gradeLabel={gradeLabelFor(p)}
-                  gradeColor={gradeColorFor(p)}
-                  typeLabel={typeLabelFor?.(p) ?? 'overhang'}
-                  isActive={depth === 0}
-                  stats={cardStats}
-                  onDelete={onDelete && depth === 0 ? () => onDelete(p.id) : undefined}
+                  problem={outgoing}
+                  gradeLabel={gradeLabelFor(outgoing)}
+                  gradeColor={gradeColorFor(outgoing)}
+                  typeLabel={typeLabelFor?.(outgoing) ?? 'overhang'}
+                  isActive={true}
+                  deleteOpacity={1}
+                  stats={getCardStats(outgoing)}
+                  onDelete={onDelete ? () => onDelete(outgoing.id) : undefined}
                 />
               </div>
-            );
-          })}
-      </div>
 
-      <div className="sr-only">Active: {activeIndex + 1}</div>
-    </div>
+              {/* Incoming */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  transition,
+                  transform: `translateY(${inY}px) scale(1)`,
+                  opacity: inOpacity,
+                  zIndex: 22,
+                  pointerEvents: 'none',
+                }}
+              >
+                <ProblemCard
+                  problem={incoming}
+                  gradeLabel={gradeLabelFor(incoming)}
+                  gradeColor={gradeColorFor(incoming)}
+                  typeLabel={typeLabelFor?.(incoming) ?? 'overhang'}
+                  isActive={true}
+                  stats={getCardStats(incoming)}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="sr-only">Active: {activeIndex + 1}</div>
+      </div>
+    </>
   );
 }
