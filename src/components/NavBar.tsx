@@ -18,7 +18,7 @@ export function NavBar() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur">
-      <div className="mx-auto max-w-xl px-6 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
+      <div className="mx-auto max-w-xl px-6 pb-[calc(env(safe-area-inset-bottom)+28px)] pt-3">
         <div className="grid grid-cols-5 items-center">
           <div className="flex justify-center">
             <IconTab {...tabs[0]} active={isActive(tabs[0].href)} />

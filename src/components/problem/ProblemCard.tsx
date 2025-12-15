@@ -62,10 +62,9 @@ export function ProblemCard({
                 alt=""
                 className="h-80 w-full object-cover opacity-90"
                 loading="lazy"
-                style={{
-                  transform: 'translateZ(0)',
-                  backfaceVisibility: 'hidden',
-                }}
+                draggable={false}
+                onDragStart={(e) => e.preventDefault()}
+                style={{ WebkitUserDrag: 'none' }}
               />
 
               <div className="absolute left-1/2 -translate-x-1/2 -bottom-6 flex items-center">

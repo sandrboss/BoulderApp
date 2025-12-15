@@ -2,9 +2,9 @@ import type { Outcome } from '@/lib/api';
 
 const labels: Record<Outcome, string> = {
   start: 'start',
-  crux: 'middle',
-  almost: 'close',
-  sent: 'topped',
+  crux: 'crux',
+  almost: 'fast top',
+  sent: 'top',
 };
 
 export function AttemptPanel({
@@ -37,7 +37,7 @@ export function AttemptPanel({
                   flex items-center justify-center
                   border-r border-white/10 last:border-r-0
                   font-sora font-semibold
-                  text-[12px] leading-none
+                  text-[14px] leading-none
                   tracking-wide
                   hover:bg-white/10
                   active:bg-white/20

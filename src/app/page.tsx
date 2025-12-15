@@ -627,7 +627,7 @@ const typeLabelFor = (_p: ProblemRow) => {
       <div className="space-y-3">
         <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl center font-semibold">My Current Projects</h1>
+          <h1 className="text-xl center font-semibold">My current projects</h1>
         </div>
         <button
           type="button"

@@ -52,7 +52,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${sora.variable} ${montagu.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${sora.variable} ${montagu.variable}`}>
       <head>
         {/* iOS PWA helpers (Safari only, Chrome iOS ignores some) */}
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
