@@ -95,3 +95,7 @@ h3 {
 .ui-transition {
   transition: all 300ms ease-in-out;
 }
+
+html {
+  background: #fff;
+}

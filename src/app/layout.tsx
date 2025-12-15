@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Sora, Montagu_Slab } from 'next/font/google';
 
 import './globals.css';
@@ -16,14 +16,17 @@ const montagu = Montagu_Slab({
   display: 'swap',
 });
 
+/**
+ * Page / App metadata
+ * (title, icons, PWA config)
+ */
 export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   title: 'Claimb',
   description: 'Hidden progress tracker for indoor bouldering',
-  themeColor: '#ffffff',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default', // dark text/icons on light bar
+    statusBarStyle: 'default', // dark icons on light status bar (Safari A2HS)
   },
   icons: {
     apple: '/apple-touch-icon.png',
@@ -34,6 +37,15 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Viewport config
+ * (Chrome top bar color, color scheme)
+ */
+export const viewport: Viewport = {
+  themeColor: '#ffffff',
+  colorScheme: 'light',
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -42,23 +54,20 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${sora.variable} ${montagu.variable}`}>
       <head>
-        {/* iOS PWA + status bar */}
+        {/* iOS PWA helpers (Safari only, Chrome iOS ignores some) */}
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Claimb" />
-        <meta name="theme-color" content="#ffffff" />
       </head>
 
-      <body className="bg-white text-slate-50">
-        {/* iOS safe-area top background (fixes black bar) */}
-        <div
-          className="fixed left-0 right-0 top-0 z-[9999] bg-white"
-          style={{ height: 'env(safe-area-inset-top)' }}
-        />
-
+      {/* 
+        IMPORTANT:
+        - html background should be light so Chrome iOS / overscroll areas are white
+        - body can stay dark for your app UI
+      */}
+      <body className="bg-slate-950 text-slate-50">
         <NavBar />
-
         <div className="pt-2">{children}</div>
       </body>
     </html>
