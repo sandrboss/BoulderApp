@@ -49,7 +49,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#ffffff" />
       </head>
 
-      <body className="bg-slate-950 text-slate-50">
+      <body className="bg-white text-slate-50">
         <NavBar />
         <div className="pt-2">{children}</div>
       </body>
