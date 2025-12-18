@@ -326,7 +326,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-// ✅ IMPORTANT: use Framer Motion props type (fixes Vercel TS error)
 function Chip({
   selected,
   children,

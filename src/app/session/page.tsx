@@ -1,8 +1,9 @@
-import { supabase } from '@/lib/supabaseClient';
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+'use client';
 
-type Energy = 'low' | 'normal' | 'high';
+import * as React from 'react';
+import { supabase } from '@/lib/supabaseClient';
+
+type Energy = 'low' | 'normal' | 'high' | null;
 
 type SessionRow = {
   id: string;
@@ -11,324 +12,243 @@ type SessionRow = {
 };
 
 type AttemptRow = {
+  id: string;
   session_id: string;
   problem_id: string;
-  outcome: 'crux' | 'almost' | 'sent';
+  outcome: string;
 };
 
-type ProblemRow = {
-  id: string;
-  grade: string | null;
-  gym_id: string | null;
-  grade_id: string | null;
-};
+/* ---------------- utils ---------------- */
 
-type GymGradeRow = {
-  id: string;
-  gym_id: string;
-  name: string;
-  color: string | null;
-  sort_order: number | null;
-  created_at: string;
-};
-
-// Fallback ordering for free-text grades (only used if grade_id is missing)
-const GRADE_ORDER = [
-  '4', '4+', '5', '5+',
-  '5a', '5a+', '5b', '5b+', '5c', '5c+',
-  '6a', '6a+', '6b', '6b+', '6c', '6c+',
-  '7a', '7a+',
-];
-
-function extractGradeToken(grade: string | null): string | null {
-  if (!grade) return null;
-  const lower = grade.toLowerCase();
-  for (const token of GRADE_ORDER) {
-    if (lower.includes(token)) return token;
-  }
-  return null;
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function startOfNextMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1);
+}
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
-function gradeRankFallback(grade: string | null): number | null {
-  const token = extractGradeToken(grade);
-  if (!token) return null;
-  const idx = GRADE_ORDER.indexOf(token);
-  return idx === -1 ? null : idx;
+function fmtMonth(d: Date) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+  }).format(d);
 }
 
-const ENERGY_LABEL: Record<Energy, string> = {
-  low: 'Low energy',
-  normal: 'Normal energy',
-  high: 'High energy',
-};
+function fmtSessionRightDate(dateStr: string) {
+  const [y, m, day] = dateStr.split('-').map(Number);
+  const d = new Date(y, (m ?? 1) - 1, day ?? 1);
 
-const ENERGY_EMOJI: Record<Energy, string> = {
-  low: '😵',
-  normal: '🙂',
-  high: '🚀',
-};
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(d);
+  const dd = new Intl.DateTimeFormat('en-US', { day: 'numeric' }).format(d);
+  const month = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(d);
 
-function classifySession(totalAttempts: number, sends: number): { label: string; hint: string } {
-  // Coach-y but short.
-  if (sends >= 3 && totalAttempts > 0 && totalAttempts / sends <= 3) {
-    return { label: 'Flow day', hint: 'Many sends with low effort.' };
-  }
-  if (sends >= 1 && totalAttempts >= 15) {
-    return { label: 'Progress day', hint: 'Lots of work / projecting.' };
-  }
-  if (totalAttempts >= 25) {
-    return { label: 'Volume day', hint: 'Conditioning + mileage.' };
-  }
-  if (totalAttempts === 0) {
-    return { label: 'Warm-up', hint: 'Light session / no logged attempts.' };
-  }
-  return { label: 'Solid session', hint: 'Balanced session.' };
+  return `${weekday}, ${dd} ${month}`;
 }
 
-function StatPill({ children }: { children: React.ReactNode }) {
+/* ---------------- micro components ---------------- */
+
+function SmallCaps({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-semibold text-slate-900">
+    <div className="text-[9px] tracking-[0.18em] uppercase text-black/40">
       {children}
-    </span>
+    </div>
   );
 }
 
-export default async function SessionHistoryPage() {
-  // 1) Sessions
-  const { data: sessionsData, error: sessionsError } = await supabase
-    .from('sessions')
-    .select('id, date, energy')
-    .order('date', { ascending: false });
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col items-center">
+      <SmallCaps>{label}</SmallCaps>
+      <div className="mt-0.5 text-base font-medium tabular-nums text-black">
+        {value}
+      </div>
+    </div>
+  );
+}
 
-  if (sessionsError) {
-    console.error(sessionsError);
-    return (
-      <main className="min-h-screen bg-bg text-fg p-4 flex items-center justify-center">
-        <p>Fehler beim Laden der Sessions.</p>
-      </main>
-    );
-  }
+/* ---------------- main ---------------- */
 
-  const sessions = (sessionsData ?? []) as SessionRow[];
+export default function SessionPage() {
+  const [monthCursor, setMonthCursor] = React.useState(() => startOfMonth(new Date()));
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  if (sessions.length === 0) {
-    return (
-      <main className="min-h-screen app-pattern text-fg p-4">
-        <div className="max-w-sm mx-auto px-3 space-y-4 pb-24">
-          <h1 className="text-xl font-semibold">Previous Sessions</h1>
-          <div className="rounded-2xl border border-border bg-white/70 p-4 text-sm text-fg0 backdrop-blur">
-            Noch keine Sessions – starte heute deine erste auf der „Heute“-Seite.
-          </div>
-        </div>
-      </main>
-    );
-  }
+  const [sessions, setSessions] = React.useState<SessionRow[]>([]);
+  const [attempts, setAttempts] = React.useState<AttemptRow[]>([]);
 
-  const sessionIds = sessions.map((s) => s.id);
+  React.useEffect(() => {
+    let cancelled = false;
 
-  // 2) Attempts (all)
-  const { data: attemptsData, error: attemptsError } = await supabase
-    .from('attempts')
-    .select('session_id, problem_id, outcome');
+    async function load() {
+      setLoading(true);
+      setError(null);
 
-  if (attemptsError) {
-    console.error(attemptsError);
-    return (
-      <main className="min-h-screen bg-bg text-fg p-4 flex items-center justify-center">
-        <p>Fehler beim Laden der Versuche.</p>
-      </main>
-    );
-  }
+      const from = startOfMonth(monthCursor).toISOString().slice(0, 10);
+      const to = startOfNextMonth(monthCursor).toISOString().slice(0, 10);
 
-  const attempts = (attemptsData ?? []) as AttemptRow[];
+      try {
+        const { data: sessionsData, error: sErr } = await supabase
+          .from('sessions')
+          .select('id, date, energy')
+          .gte('date', from)
+          .lt('date', to)
+          .order('date', { ascending: false });
 
-  // 3) Problems
-  const { data: problemsData, error: problemsError } = await supabase
-    .from('problems')
-    .select('id, grade, gym_id, grade_id');
+        if (sErr) throw sErr;
 
-  if (problemsError) {
-    console.error(problemsError);
-    return (
-      <main className="min-h-screen bg-bg text-fg p-4 flex items-center justify-center">
-        <p>Fehler beim Laden der Boulder-Probleme.</p>
-      </main>
-    );
-  }
+        const list = (sessionsData ?? []) as SessionRow[];
+        if (cancelled) return;
 
-  const problems = (problemsData ?? []) as ProblemRow[];
-  const problemsById = new Map<string, ProblemRow>();
-  for (const p of problems) problemsById.set(p.id, p);
+        setSessions(list);
 
-  // 4) Gym grades for custom ordering/colors
-  const { data: gradesData, error: gradesError } = await supabase
-    .from('gym_grades')
-    .select('id, gym_id, name, color, sort_order, created_at')
-    .order('gym_id', { ascending: true })
-    .order('sort_order', { ascending: true })
-    .order('created_at', { ascending: true });
-
-  if (gradesError) {
-    console.error(gradesError);
-    return (
-      <main className="min-h-screen bg-bg text-fg p-4 flex items-center justify-center">
-        <p>Fehler beim Laden der Gym-Grades.</p>
-      </main>
-    );
-  }
-
-  const gymGrades = (gradesData ?? []) as GymGradeRow[];
-
-  const gradeMetaById = new Map<
-    string,
-    { name: string; color: string | null; index: number; gym_id: string }
-  >();
-
-  const indexCounters: Record<string, number> = {};
-  for (const g of gymGrades) {
-    if (!indexCounters[g.gym_id]) indexCounters[g.gym_id] = 0;
-    const idx = indexCounters[g.gym_id]++;
-    gradeMetaById.set(g.id, {
-      name: g.name,
-      color: g.color,
-      index: idx,
-      gym_id: g.gym_id,
-    });
-  }
-
-  // 5) Group attempts by session (only those sessions)
-  const attemptsBySession: Record<string, AttemptRow[]> = {};
-  for (const a of attempts) {
-    if (!sessionIds.includes(a.session_id)) continue;
-    (attemptsBySession[a.session_id] ??= []).push(a);
-  }
-
-  // 6) View model per session
-  const cards = sessions.map((session) => {
-    const sessAttempts = attemptsBySession[session.id] ?? [];
-    const totalAttempts = sessAttempts.length;
-    const sends = sessAttempts.filter((a) => a.outcome === 'sent');
-    const sendsCount = sends.length;
-
-    const projectIds = new Set(sessAttempts.map((a) => a.problem_id));
-    const projectsTouched = projectIds.size;
-
-    // Hardest send (prefer custom grade)
-    let hardestGrade: string | null = null;
-    let hardestColor: string | null = null;
-    let hardestRank = -1;
-
-    for (const send of sends) {
-      const problem = problemsById.get(send.problem_id);
-      if (!problem) continue;
-
-      let rank: number | null = null;
-      let label: string | null = null;
-      let color: string | null = null;
-
-      if (problem.grade_id && gradeMetaById.has(problem.grade_id)) {
-        const meta = gradeMetaById.get(problem.grade_id)!;
-        rank = meta.index;
-        label = meta.name;
-        color = meta.color ?? null;
-      } else if (problem.grade) {
-        const fbRank = gradeRankFallback(problem.grade);
-        if (fbRank !== null) {
-          rank = fbRank;
-          label = problem.grade;
-        } else {
-          label = problem.grade;
+        const ids = list.map((s) => s.id);
+        if (!ids.length) {
+          setAttempts([]);
+          return;
         }
-      }
 
-      if (rank !== null && rank > hardestRank) {
-        hardestRank = rank;
-        hardestGrade = label ?? null;
-        hardestColor = color ?? null;
-      } else if (hardestRank === -1 && label && !hardestGrade) {
-        hardestGrade = label;
-        hardestColor = color ?? null;
+        const { data: attemptsData, error: aErr } = await supabase
+          .from('attempts')
+          .select('id, session_id, problem_id, outcome')
+          .in('session_id', ids);
+
+        if (aErr) throw aErr;
+
+        if (!cancelled) setAttempts((attemptsData ?? []) as AttemptRow[]);
+      } catch (e: any) {
+        console.error(e);
+        if (!cancelled) setError(e?.message ?? 'Could not load sessions.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
 
-    const coach = classifySession(totalAttempts, sendsCount);
-
-    return {
-      session,
-      totalAttempts,
-      sendsCount,
-      projectsTouched,
-      hardestGrade,
-      hardestColor,
-      coach,
+    load();
+    return () => {
+      cancelled = true;
     };
-  });
+  }, [monthCursor]);
+
+  const statsBySession = React.useMemo(() => {
+    const map: Record<
+      string,
+      { attempts: number; sends: number; projects: number; unique: Set<string>; sent: Set<string> }
+    > = {};
+
+    for (const a of attempts) {
+      if (!map[a.session_id]) {
+        map[a.session_id] = {
+          attempts: 0,
+          sends: 0,
+          projects: 0,
+          unique: new Set(),
+          sent: new Set(),
+        };
+      }
+
+      const m = map[a.session_id];
+      m.attempts += 1;
+      m.unique.add(a.problem_id);
+      if (a.outcome === 'sent') {
+        m.sends += 1;
+        m.sent.add(a.problem_id);
+      }
+    }
+
+    for (const k of Object.keys(map)) {
+      map[k].projects = clamp(map[k].unique.size - map[k].sent.size, 0, 999);
+    }
+
+    return map;
+  }, [attempts]);
 
   return (
-    <main className="min-h-screen app-pattern text-fg p-4">
-      <div className="max-w-sm mx-auto px-3 pb-24 space-y-4">
-        <header className="space-y-1">
-          <h1 className="text-xl font-semibold">Previous Sessions</h1>
-          <p className="text-sm text-fg0">
-            History (MVP): what happened each day — your trends live in Stats.
-          </p>
-        </header>
+    <main className="min-h-screen bg-[#F3F1EE] text-black p-4">
+      <div className="mx-auto w-full max-w-sm pb-24">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold tracking-tight">Sessions</h1>
 
-        <div className="space-y-3">
-          {cards.map(({ session, totalAttempts, sendsCount, projectsTouched, hardestGrade, hardestColor, coach }) => (
-            <div
-              key={session.id}
-              className="rounded-2xl bg-white/80 p-4 shadow-sm backdrop-blur"
+          <div className="flex items-center gap-3 text-sm">
+            <button
+              onClick={() =>
+                setMonthCursor((d) =>
+                  startOfMonth(new Date(d.getFullYear(), d.getMonth() - 1, 1))
+                )
+              }
+              className="opacity-60 hover:opacity-100"
             >
-              {/* Top row */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-base font-semibold text-slate-900">
-                    {session.date}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-600">
-                    {ENERGY_EMOJI[session.energy]} {ENERGY_LABEL[session.energy]}
-                  </div>
-                </div>
+              ←
+            </button>
 
-                <StatPill>{coach.label}</StatPill>
-              </div>
+            <button
+              onClick={() => setMonthCursor(startOfMonth(new Date()))}
+              className="text-xs opacity-60 hover:opacity-100"
+            >
+              Today
+            </button>
 
-              {/* Middle stats */}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <StatPill>{sendsCount} sends</StatPill>
-                <StatPill>{totalAttempts} attempts</StatPill>
-                <StatPill>{projectsTouched} projects</StatPill>
-              </div>
+            <button
+              onClick={() =>
+                setMonthCursor((d) =>
+                  startOfMonth(new Date(d.getFullYear(), d.getMonth() + 1, 1))
+                )
+              }
+              className="opacity-60 hover:opacity-100"
+            >
+              →
+            </button>
+          </div>
+        </div>
 
-              {/* Hardest */}
-              <div className="mt-3 rounded-xl bg-black/5 px-3 py-2 text-sm text-slate-900">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                  Hardest send
-                </div>
-                <div className="mt-1 inline-flex items-center gap-2 font-semibold">
-                  {hardestGrade ? (
-                    <>
-                      {hardestColor && (
-                        <span
-                          className="h-3 w-3 rounded-full border border-black/15"
-                          style={{ backgroundColor: hardestColor }}
-                        />
-                      )}
-                      {hardestGrade}
-                    </>
-                  ) : (
-                    <span className="text-slate-600">–</span>
-                  )}
-                </div>
-              </div>
+        {/* Month */}
+        <div className="mt-6 flex justify-between text-sm text-black/70">
+          <div>{sessions.length} sessions</div>
+          <div className="font-medium text-black">{fmtMonth(monthCursor)}</div>
+        </div>
 
-              {/* Coach hint */}
-              <div className="mt-2 text-xs text-slate-600">
-                {coach.hint}
-              </div>
+        {/* Content */}
+        <div className="mt-6 space-y-3">
+          {loading && (
+            <div className="rounded-2xl bg-white/60 p-4 text-xs text-black/50">
+              Loading…
             </div>
-          ))}
+          )}
+
+          {!loading && error && (
+            <div className="rounded-2xl bg-white/60 p-4 text-xs text-red-600">
+              {error}
+            </div>
+          )}
+
+          {sessions.map((s) => {
+            const st = statsBySession[s.id] ?? { attempts: 0, sends: 0, projects: 0 };
+            const conv = st.attempts ? Math.round((st.sends / st.attempts) * 100) : 0;
+
+            return (
+              <div key={s.id} className="rounded-3xl bg-[#DEE4EE] p-4">
+                <div className="flex justify-between items-start">
+                  <div className="text-sm font-medium text-black">
+                    {fmtSessionRightDate(s.date)}
+                  </div>
+                  <div className="text-xs text-black/50">{s.energy ?? 'normal'}</div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3">
+                  <Metric label="Sends" value={String(st.sends)} />
+                  <Metric label="Attempts" value={String(st.attempts)} />
+                  <Metric label="Projects" value={String(st.projects)} />
+                </div>
+
+                <div className="mt-4 flex justify-center text-xs text-black/60">
+                  Conversion: <span className="ml-1 font-medium text-black">{conv}%</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </main>
